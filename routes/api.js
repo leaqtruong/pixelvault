@@ -556,6 +556,20 @@ router.post('/dev/payout', needDev, async (req, res) => {
   res.json({ ok: true });
 });
 
+router.post('/dev/:id/edit', needDev, async (req, res) => {
+  const game = await Game.findOne({ _id: req.params.id, developer: req.session.user._id });
+  if (!game) return res.status(404).json({ error: 'Not found' });
+  const patch = {};
+  if (req.body.title !== undefined) patch.title = String(req.body.title).slice(0, 120);
+  if (req.body.tagline !== undefined) patch.tagline = String(req.body.tagline).slice(0, 200);
+  if (req.body.price !== undefined) patch.price = Math.max(0, Number(req.body.price) || 0);
+  if (req.body.discountPct !== undefined) patch.discountPct = Math.min(90, Math.max(0, Number(req.body.discountPct) || 0));
+  if (['draft', 'published', 'delisted'].includes(req.body.status)) patch.status = req.body.status;
+  if (req.body.physicalStock !== undefined) patch['physical.stock'] = Math.max(0, Number(req.body.physicalStock) || 0);
+  await Game.updateOne({ _id: game._id }, patch);
+  res.json({ ok: true });
+});
+
 router.get('/dev/:id/keys', needDev, async (req, res) => {
   const game = await Game.findOne({ _id: req.params.id, developer: req.session.user._id }).lean();
   if (!game) return res.status(404).json({ error: 'Not found' });
@@ -653,6 +667,24 @@ router.get('/mods/:id', async (req, res) => {
   const mod = await Mod.findById(req.params.id).populate('author', 'username').populate('game', 'title slug').lean();
   if (!mod) return res.status(404).json({ error: 'Not found' });
   res.json({ mod });
+});
+
+router.post('/mods/new', needLogin, async (req, res) => {
+  let { game, title, tagline, description, version, downloadUrl, tags } = req.body;
+  if (!game || !title) return res.status(400).json({ error: 'Game + title required.' });
+  if (!String(game).match(/^[0-9a-fA-F]{24}$/)) {
+    const g = await Game.findOne({ slug: String(game) });
+    if (!g) return res.status(400).json({ error: 'Game not found — paste its store slug.' });
+    game = g._id;
+  }
+  const m = await Mod.create({
+    game, title: String(title).slice(0, 120), tagline: String(tagline || '').slice(0, 200),
+    description: String(description || '').slice(0, 4000), author: req.session.user._id,
+    version: version || '1.0.0', downloadUrl: downloadUrl || '',
+    tags: Array.isArray(tags) ? tags : String(tags || '').split(',').map((s) => s.trim()).filter(Boolean),
+    status: 'published',
+  });
+  res.json({ ok: true, id: m._id });
 });
 
 router.get('/stats', async (req, res) => {

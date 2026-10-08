@@ -108,8 +108,18 @@ export function DevApply() {
 
 export function Dev() {
   const [d, setD] = useState(null);
-  useEffect(() => { api('/dev').then(setD).catch(() => setD({ err: 1 })); }, []);
+  const [editing, setEditing] = useState(null);
+  const load = () => api('/dev').then(setD).catch(() => setD({ err: 1 }));
+  useEffect(load, []);
   const payout = async () => { try { await api('/dev/payout', { method: 'POST' }); setD(await api('/dev')); } catch (e) { alert(e.message); } };
+  const saveEdit = async (e, g) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    try {
+      await api(`/dev/${g._id}/edit`, { method: 'POST', body: { price: f.get('price'), discountPct: f.get('discountPct'), status: f.get('status'), physicalStock: f.get('physicalStock') } });
+      setEditing(null); load();
+    } catch (er) { alert(er.message); }
+  };
   if (!d) return <p className="muted">Loading…</p>;
   if (d.err) return <p className="muted">Developer account required. <Link to="/dev/apply">Become a developer</Link></p>;
   return (<><h1>Dev console <Link className="cta-btn sm" to="/dev/new">+ Publish game</Link> <Link className="ghost-btn sm" to="/dev/toys">Toy shelf</Link></h1>
@@ -119,7 +129,16 @@ export function Dev() {
       <div className="kpi"><span>Digital units</span><b>{d.unitsD}</b></div>
       <div className="kpi"><span>Owed now</span><b>${d.balance.toFixed(2)}</b><button className="ghost-btn sm" onClick={payout}>Request payout</button></div>
     </div>
-    <div className="panel"><h3>Your games</h3>{d.games.map((g) => <p key={g._id}><Link to={`/games/${g.slug}`}>{g.title}</Link> — ${g.stats.revenueGross.toFixed(2)} · keys {g.stats.keysAvailable || 0} · <Link className="ghost-btn sm" to={`/dev/keys/${g._id}`}>Keys</Link></p>)}</div>
+    <div className="panel"><h3>Your games</h3>{d.games.map((g) => <div key={g._id}>
+      <p><Link to={`/games/${g.slug}`}>{g.title}</Link> — ${g.stats.revenueGross.toFixed(2)} · keys {g.stats.keysAvailable || 0} · {g.status} <Link className="ghost-btn sm" to={`/dev/keys/${g._id}`}>Keys</Link> <button className="ghost-btn sm" onClick={() => setEditing(editing === g._id ? null : g._id)}>Edit</button></p>
+      {editing === g._id && <form className="row" onSubmit={(e) => saveEdit(e, g)}>
+        <input name="price" type="number" step="0.01" defaultValue={g.price} title="Price" />
+        <input name="discountPct" type="number" defaultValue={g.discountPct} title="% off" />
+        <input name="physicalStock" type="number" defaultValue={g.physical?.stock || 0} title="Box stock" />
+        <select name="status" defaultValue={g.status}><option>published</option><option>draft</option><option>delisted</option></select>
+        <button className="cta-btn sm">Save</button>
+      </form>}
+    </div>)}</div>
   </>);
 }
 
@@ -222,11 +241,30 @@ export function PostDetail() {
 
 export function Mods() {
   const [d, setD] = useState(null);
+  const [msg, setMsg] = useState('');
   useEffect(() => { api('/mods').then(setD).catch(() => setD({ mods: [] })); }, []);
+  const upload = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    try {
+      await api('/mods/new', { method: 'POST', body: { game: f.get('game'), title: f.get('title'), description: f.get('description'), version: f.get('version'), downloadUrl: f.get('downloadUrl') } });
+      e.target.reset(); setD(await api('/mods')); setMsg('Mod published!');
+    } catch (er) { setMsg(er.message); }
+  };
   if (!d) return <p className="muted">Loading…</p>;
   return (<><h1>Workshop</h1>
     {(d.mods || []).map((m) => <Link key={m._id} className="thread" to={`/mods/${m._id}`}><b>{m.title}</b><span>DL {m.stats.downloads} · @{m.author?.username}</span></Link>)}
-    {!d.mods.length && <p className="muted">No mods yet.</p>}</>);
+    {!d.mods.length && <p className="muted">No mods yet.</p>}
+    <div className="panel"><h3>Upload a mod</h3>
+      <form onSubmit={upload} style={{ display: 'grid', gap: 8 }}>
+        <input name="game" placeholder="Game store slug (e.g. hollow-knight-...) — see URL" title="Game slug" required />
+        <input name="title" placeholder="Mod title *" required />
+        <div className="row"><input name="version" placeholder="1.0.0" /><input name="downloadUrl" placeholder="Download URL" /></div>
+        <textarea name="description" placeholder="What does it do?" />
+        <button className="cta-btn sm">Publish mod</button>
+      </form>
+      {msg && <p className="tiny">{msg}</p>}
+    </div></>);
 }
 
 export function ModDetail() {
