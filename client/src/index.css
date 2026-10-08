@@ -84,18 +84,18 @@ img{background:#0d0b09}
 .install-btn{background:linear-gradient(100deg,var(--ember),var(--accent));color:#fff;padding:9px 20px;font-size:13px;font-weight:700}
 .install-btn:hover{filter:brightness(1.08);color:#fff}
 
-/* ---------- shell + sidebar (animated collapse, toggle lives in header) ---------- */
-.shell{max-width:1340px;margin:0 auto;padding:0 20px;display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:0 14px;align-items:start}
-.side-edge{align-self:start;position:sticky;top:200px;width:26px;height:72px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ember);color:var(--accent);font-size:18px;cursor:pointer;font-family:inherit;padding:0}
-.side-edge:hover{background:#f5a5241c}
+/* ---------- shell + sidebar (tab spans full panel height) ---------- */
+.shell{max-width:1340px;margin:0 auto;padding:0 20px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 14px;align-items:start}
 .shell-main{min-width:0}
 .shell-main .store_nav{max-width:none;margin:0 0 22px}
 .shell-main .wrap{max-width:none;margin:0;padding:0 0 48px}
-.side-rail{width:252px;overflow:hidden;transition:width .32s ease,opacity .25s ease,margin .32s ease}
-.shell.no-side{grid-template-columns:auto auto minmax(0,1fr);gap:0 10px}
-.shell.no-side .side-rail{width:0;opacity:0;margin-right:-22px}
+.side-rail{display:flex;align-items:stretch;position:sticky;top:82px}
+.side-clip{overflow:hidden;width:252px;flex-shrink:0;transition:width .32s ease,opacity .25s ease}
+.shell.no-side .side-clip{width:0;opacity:0}
+.shell.no-side{grid-template-columns:auto minmax(0,1fr);gap:0 10px}
 .side-in{width:240px;display:flex;flex-direction:column;gap:12px}
-.side-rail{position:sticky;top:82px}
+.side-edge{width:26px;flex-shrink:0;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ember);color:var(--accent);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;padding:0}
+.side-edge:hover{background:#f5a5241c}
 
 /* square everything — no round frames */
 .action-btn,.icon-btn,.avatar-chip,.cart-badge,.carousel_arrow,.track span,.glyph,.drop_menu,.avatar,.shot_strip img,input,select,textarea,.cta-btn,.ghost-btn,.install-btn,.tag,.devresp,.store_search input,.store_search button,.menu-btn{border-radius:2px !important}
@@ -306,6 +306,7 @@ a.tag:hover{background:#f5a5242c;color:var(--accent)}
   .side-edge{display:none}
   .side-rail{position:fixed;left:0;top:0;bottom:0;width:284px;max-width:86vw;z-index:80;background:var(--bg1);padding:16px;overflow-y:auto;transform:translateX(-105%);transition:transform .25s ease;border-right:1px solid var(--line);opacity:1;margin-right:0}
   .shell.no-side .side-rail{width:284px;max-width:86vw;opacity:1;margin-right:0}
+  .shell.no-side .side-clip{width:auto;opacity:1}
   .shell.menu-open .side-rail{transform:none}
   .side-in{width:auto}
   .scrim{display:block;position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55)}

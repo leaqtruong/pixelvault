@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { api, priceOf } from './api.js';
 import { BUILD } from './version.js';
 
-function Sidebar({ me, onLogout, theme, onTheme }) {
+function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
   const nav = useNavigate();
   const [mature, setMature] = useState(null);
   useEffect(() => {
@@ -17,6 +17,7 @@ function Sidebar({ me, onLogout, theme, onTheme }) {
   };
   return (
     <aside className="side-rail" aria-label="Settings and account">
+      <div className="side-clip">
       <div className="side-in">
       <div className="rail-card">
         {me ? (
@@ -66,6 +67,8 @@ function Sidebar({ me, onLogout, theme, onTheme }) {
         </div>
       </div>
       </div>
+      </div>
+      <button className="side-edge" title={collapsed ? 'Show panel' : 'Hide panel'} onClick={onToggle}>{collapsed ? '›' : '‹'}</button>
     </aside>
   );
 }
@@ -113,8 +116,7 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
       </header>
       <div className={'shell' + (menu ? ' menu-open' : '') + (hideSide ? ' no-side' : '')}>
         {menu && <div className="scrim" onClick={() => setMenu(false)} />}
-        <Sidebar me={me} onLogout={onLogout} theme={theme} onTheme={onTheme} />
-        <button className="side-edge" title={hideSide ? 'Show panel' : 'Hide panel'} onClick={() => setHideSide(!hideSide)}>{hideSide ? '›' : '‹'}</button>
+        <Sidebar me={me} onLogout={onLogout} theme={theme} onTheme={onTheme} collapsed={hideSide} onToggle={() => setHideSide(!hideSide)} />
         <div className="shell-main">
           <div className="store_nav"><div className="store_nav_inner">
         <div className="drop"><button>Your Store</button><div className="drop_menu">
