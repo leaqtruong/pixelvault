@@ -3,6 +3,14 @@
   --ink:#dcd4f0; --bright:#ffffff; --dim:#a89cc8; --faint:#6e628c;
   --accent:#e879f9; --green:#d4f542; --green-bg:#3d2b5c; --price-bg:#2a1a45;
   --red:#ff7b72; --amber:#fbbf24; --radius:6px;
+  --field:#0f0a1d; --line:#ffffff14; --pop:#2a1745;
+}
+[data-theme="light"]{
+  --bg0:#f4f1fa; --bg1:#ece7f5; --card:#ffffff; --card-hi:#f6f2fd;
+  --ink:#33264f; --bright:#1d1332; --dim:#6f6390; --faint:#9a8fb8;
+  --accent:#a21caf; --green:#4d7c0f; --green-bg:#ecfccb; --price-bg:#f1e8ff;
+  --red:#dc2626; --amber:#b45309;
+  --field:#ffffff; --line:#4c1d9522; --pop:#ffffff;
 }
 *{box-sizing:border-box}
 html{background:var(--bg0)}
@@ -32,7 +40,7 @@ code{font-family:Consolas,monospace;background:#0007;padding:2px 7px;border-radi
 .ghost-btn.sm{font-size:12px;padding:6px 11px}
 .ghost-btn.current{background:linear-gradient(90deg,#8b5cf6,#ec4899);color:#fff;border-color:transparent;font-weight:700}
 .ghost-btn.disabled{opacity:.35}
-input,select,textarea{background:#0f0a1d;border:1px solid #4c3a75;color:var(--ink);border-radius:4px;padding:9px 11px;font-size:13px}
+input,select,textarea{background:var(--field);border:1px solid #4c3a75;color:var(--ink);border-radius:4px;padding:9px 11px;font-size:13px}
 textarea{width:100%;min-height:90px}
 .store_nav{max-width:1000px;margin:0 auto;padding:0 18px}
 .store_nav_inner{display:flex;align-items:stretch;background:linear-gradient(90deg,#7c3aed,#a855f7 55%,#ec4899);border-radius:6px;margin:12px 0 24px;flex-wrap:wrap}
@@ -120,3 +128,24 @@ textarea{width:100%;min-height:90px}
   .cat_tiles{grid-template-columns:repeat(2,1fr)}
   .cart-row{grid-template-columns:80px 1fr auto}
 }
+
+/* ---------- light theme surface overrides ---------- */
+[data-theme="light"] body{background:linear-gradient(180deg,#e9e2f7 0%,#f4f1fa 520px,#f4f1fa 1200px) no-repeat}
+[data-theme="light"] .topbar{background:rgba(255,255,255,.94);box-shadow:0 1px 12px rgba(76,29,149,.12)}
+[data-theme="light"] .topbar nav a{color:#5b4a7d}
+[data-theme="light"] .topbar nav a:hover,[data-theme="light"] .topbar nav a.active{color:#1d1332;background:#4c1d9514}
+[data-theme="light"] .logo{color:#1d1332}
+[data-theme="light"] .spotlight,[data-theme="light"] .game_info,[data-theme="light"] .panel,[data-theme="light"] .kpi,[data-theme="light"] .auth-box,[data-theme="light"] .section{background:#fff;border:1px solid #4c1d9518;box-shadow:0 2px 12px rgba(76,29,149,.08)}
+[data-theme="light"] .gcard{background:#fff;border:1px solid #4c1d9518}
+[data-theme="light"] .gcard:hover{box-shadow:0 10px 24px rgba(76,29,149,.18)}
+[data-theme="light"] .thread{background:#fff;border:1px solid #4c1d9518}
+[data-theme="light"] .cart-row{background:#fff;border:1px solid #4c1d9518}
+[data-theme="light"] input,[data-theme="light"] select,[data-theme="light"] textarea{background:#fff;border-color:#d8cdf0;color:#33264f}
+[data-theme="light"] .side_box,[data-theme="light"] .filters{background:#4c1d950a}
+[data-theme="light"] .drop_menu{background:#fff;box-shadow:0 12px 30px rgba(76,29,149,.2)}
+[data-theme="light"] .drop_menu a{color:#5b4a7d}
+[data-theme="light"] .drop_menu a:hover{background:#4c1d9514;color:#1d1332}
+[data-theme="light"] .tbl td,[data-theme="light"] .tbl th{border-color:#e4dcf3}
+[data-theme="light"] .footer{border-color:#4c1d9522}
+[data-theme="light"] code{background:#4c1d9512}
+[data-theme="light"] .gcard.toy img,[data-theme="light"] .game_info .header_img.toy,[data-theme="light"] .spotlight_main{background:#f1eafa}

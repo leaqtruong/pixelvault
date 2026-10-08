@@ -82,8 +82,12 @@ export function Store() {
 export function GameDetail({ me }) {
   const { slug } = useParams();
   const [d, setD] = useState(null);
+  const [live, setLive] = useState(null);
   const [err, setErr] = useState('');
   useEffect(() => { api('/games/' + slug).then(setD).catch((e) => setErr(e.message)); }, [slug]);
+  useEffect(() => {
+    if (d?.game?.steamAppId) api('/live/' + d.game.steamAppId).then(setLive).catch(() => {});
+  }, [d]);
   const nav = useNavigate();
   if (err) return <p className="err">{err}</p>;
   if (!d) return <p className="muted">Loading…</p>;
@@ -132,6 +136,9 @@ export function GameDetail({ me }) {
           <div className="buy_area">
             <h4>Buy {game.title}</h4>
             <Price g={game} />
+            {(live && (live.players !== null || live.reviews)) && (
+              <p className="tiny">🔴 {live.players !== null ? live.players.toLocaleString() + ' in-game now' : 'players n/a'}{live.reviews ? ` · Steam: ${live.reviews.desc} (${live.reviews.total.toLocaleString()})` : ''}</p>
+            )}
             {(game.price || 0) > 0
               ? <p className="tiny">{keysAvailable} keys in stock{outOfKeys && ' — out of stock'}</p>
               : <p className="tiny">Free to Play — no key needed.</p>}

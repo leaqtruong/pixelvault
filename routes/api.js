@@ -72,6 +72,11 @@ router.get('/games', async (req, res) => {
     if (feature) filter.features = feature;
     if (onSale === '1') filter.discountPct = { $gt: 0 };
     if (moddable === '1') filter.modSupport = true;
+    // Honor the viewer's "hide mature titles" setting.
+    try {
+      const viewer = req.session.user ? await User.findById(req.session.user._id).lean() : null;
+      if (viewer?.preferences?.matureFilter) filter.rating = { $nin: ['M', 'AO'] };
+    } catch {}
     let games = await Game.find(filter).populate('developer', 'username').lean();
     if (q) {
       const rx = new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -457,12 +462,36 @@ router.get('/users/:username', async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   const orders = await Order.find({ user: user._id }).sort({ createdAt: -1 }).limit(10).lean();
   const isSelf = req.session.user && String(req.session.user._id) === String(user._id);
+  if (!isSelf) { delete user.phone; delete user.purchaseHistory; }
   res.json({ user, orders: isSelf ? orders : [], isSelf });
 });
 
 router.post('/users/me', needLogin, async (req, res) => {
-  await User.updateOne({ _id: req.session.user._id }, { bio: req.body.bio?.slice(0, 500), avatar: req.body.avatar });
+  const patch = {};
+  if (req.body.bio !== undefined) patch.bio = String(req.body.bio).slice(0, 500);
+  if (req.body.avatar !== undefined) patch.avatar = String(req.body.avatar).slice(0, 500);
+  if (req.body.displayName !== undefined) patch.displayName = String(req.body.displayName).slice(0, 40);
+  if (req.body.phone !== undefined) patch.phone = String(req.body.phone).slice(0, 20);
+  if (req.body.favoriteGenres !== undefined) patch['preferences.favoriteGenres'] = (Array.isArray(req.body.favoriteGenres) ? req.body.favoriteGenres : String(req.body.favoriteGenres).split(',')).map((s) => String(s).trim()).filter(Boolean).slice(0, 10);
+  if (req.body.matureFilter !== undefined) patch['preferences.matureFilter'] = !!req.body.matureFilter;
+  await User.updateOne({ _id: req.session.user._id }, patch);
   res.json({ ok: true });
+});
+
+router.post('/users/me/addresses', needLogin, async (req, res) => {
+  const { label, fullName, street, city, region, postal, country, phone } = req.body;
+  if (!fullName || !street || !city || !postal) return res.status(400).json({ error: 'Name, street, city and ZIP are required.' });
+  const user = await User.findById(req.session.user._id);
+  user.addresses.push({ label: label || 'Home', fullName, street, city, region, postal, country: country || 'US', phone });
+  await user.save();
+  res.json({ ok: true, addresses: user.addresses });
+});
+
+router.delete('/users/me/addresses/:id', needLogin, async (req, res) => {
+  const user = await User.findById(req.session.user._id);
+  user.addresses.pull(req.params.id);
+  await user.save();
+  res.json({ ok: true, addresses: user.addresses });
 });
 
 // ---------- dev ----------
@@ -629,6 +658,15 @@ router.get('/mods/:id', async (req, res) => {
 router.get('/stats', async (req, res) => {
   const [games, orders, toys] = await Promise.all([Game.countDocuments({ status: 'published' }), Order.countDocuments(), Toy.countDocuments({ status: 'published' })]);
   res.json({ games, orders, toys, ok: true });
+});
+
+// Live external Steam data: current players + community review verdict.
+router.get('/live/:appid', async (req, res) => {
+  try {
+    const { liveFor } = require('../lib/steamLive');
+    const data = await liveFor(Number(req.params.appid));
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

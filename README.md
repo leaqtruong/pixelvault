@@ -1,8 +1,8 @@
 # ◈ PixelVault — Game Store (React + Express + MongoDB)
 
-ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + toy collectibles, dev portal with revenue, mod hub, community forums, library with playtime + keys, reviews, wishlist, shipping tracking.
+ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + toy collectibles, dev portal with revenue, mod hub, community forums, library with playtime + keys, reviews, wishlist, shipping tracking, light/dark themes, editable profiles with address book.
 
-Steam taxonomy: genres / tags / platforms / specials mirror `store.steampowered.com/search` facets — see `lib/steamTaxonomy.js`.
+Steam taxonomy: genres / tags / platforms / specials mirror `store.steampowered.com/search` facets — see `lib/steamTaxonomy.js`. Live player counts + community review verdicts come from public Steam Web APIs (`lib/steamLive.js`, 10-min cache).
 
 ## Layout
 
@@ -14,7 +14,11 @@ Steam taxonomy: genres / tags / platforms / specials mirror `store.steampowered.
 | `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Mod`, `Post`, `Review` |
 | `seed/` | `import-steam.js` (47 real games), `seed-toys.js` (12 merch), test helpers |
 
-## Run
+## Run (any machine)
+
+One click: double-click `install-demo.bat` (installs packages, seeds catalog, builds frontend — needs MongoDB running, see below), then `start-website.bat`.
+
+Manual:
 
 ```powershell
 cd pixelvault
@@ -24,8 +28,10 @@ npm install --prefix client
 node seed/import-steam.js  # 47 real games from local Steam manifests + Store API, ~390 DEMO keys
 node seed/seed-toys.js     # 12 official merch listings into standalone `toys` collection — safe to re-run
 npm run build --prefix client  # build React frontend
-npm run dev            # http://localhost:3000 (or double-click start-website.bat)
+npm run dev            # http://localhost:3000
 ```
+
+MongoDB: install MongoDB Community Server (or point `MONGO_URI` at Atlas), make sure it listens on `mongodb://127.0.0.1:27017`. The server also runs with an empty DB (pages show empty states).
 
 ## Routes (`/api/*` JSON, session-authenticated)
 

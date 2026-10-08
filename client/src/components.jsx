@@ -3,7 +3,7 @@ import { api, priceOf } from './api.js';
 
 export function useMe() { return null; }
 
-export function Layout({ me, onLogout, children }) {
+export function Layout({ me, onLogout, theme, onTheme, children }) {
   const nav = useNavigate();
   return (
     <>
@@ -19,6 +19,8 @@ export function Layout({ me, onLogout, children }) {
           </nav>
           <div className="top-actions">
             <Link to="/cart">Cart</Link>
+            <button className="ghost-btn sm" title="Toggle light / dark" onClick={onTheme}>{theme === 'light' ? '🌙 Dark' : '☀️ Light'}</button>
+            <Link to="/settings">Settings</Link>
             {me ? (
               <>
                 <Link to={`/users/${me.username}`}>{me.username}</Link>
