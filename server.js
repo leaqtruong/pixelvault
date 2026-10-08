@@ -23,10 +23,11 @@ app.use('/api', require('./routes/api'));
 // React SPA (built with `npm run build --prefix client`)
 const dist = path.join(__dirname, 'client', 'dist');
 if (fs.existsSync(path.join(dist, 'index.html'))) {
-  app.use(express.static(dist));
+  app.use(express.static(dist, { maxAge: '7d', immutable: true }));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
-    res.sendFile(path.join(dist, 'index.html'));
+    // Never cache the shell: clients always boot the newest bundle.
+    res.sendFile(path.join(dist, 'index.html'), { headers: { 'Cache-Control': 'no-store' } });
   });
 } else {
   app.get('/', (req, res) => res.send('<h1>PixelVault API</h1><p>Build the React client: <code>npm run build --prefix client</code></p>'));

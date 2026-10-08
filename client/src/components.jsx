@@ -2,12 +2,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { api, priceOf } from './api.js';
 
-const IcoSun = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4.5" /><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" /></svg>);
-const IcoMoon = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z" /></svg>);
-const IcoSliders = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2.2" /><circle cx="10" cy="17" r="2.2" /></svg>);
-const IcoTag = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h7l9 9-7 7-9-9z" /><circle cx="9" cy="9" r="1.6" /></svg>);
-
-function Sidebar({ me, onLogout, theme, onTheme, onHide }) {
+function Sidebar({ me, onLogout, theme, onTheme }) {
   const nav = useNavigate();
   const [mature, setMature] = useState(null);
   useEffect(() => {
@@ -21,7 +16,7 @@ function Sidebar({ me, onLogout, theme, onTheme, onHide }) {
   };
   return (
     <aside className="side-rail" aria-label="Settings and account">
-      <button className="ghost-btn sm" onClick={onHide}>Hide panel</button>
+      <div className="side-in">
       <div className="rail-card">
         {me ? (
           <>
@@ -68,6 +63,7 @@ function Sidebar({ me, onLogout, theme, onTheme, onHide }) {
           <Link to="/community">Forums</Link>
         </div>
       </div>
+      </div>
     </aside>
   );
 }
@@ -98,8 +94,8 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
             <Link className={linkCls('/dev')} to="/dev">Dev Portal</Link>
           </nav>
           <div className="top-actions">
+            <button className="ghost-btn sm" title="Show / hide side panel" onClick={() => setHideSide(!hideSide)}>Panel</button>
             <Link className="action-btn" to="/cart">Cart{cartN > 0 && <span className="cart-badge">{cartN}</span>}</Link>
-            <button className="icon-btn" title={theme === 'light' ? 'Switch to dark' : 'Switch to light'} onClick={onTheme}>{theme === 'light' ? <IcoMoon /> : <IcoSun />}</button>
             {me ? (
               <>
                 <Link className="avatar-chip" to={`/users/${me.username}`}>{(me.username || '?')[0].toUpperCase()}</Link>
@@ -116,8 +112,7 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
       </header>
       <div className={'shell' + (menu ? ' menu-open' : '') + (hideSide ? ' no-side' : '')}>
         {menu && <div className="scrim" onClick={() => setMenu(false)} />}
-        {hideSide && <button className="side-tab" onClick={() => setHideSide(false)}>PANEL</button>}
-        {!hideSide && <Sidebar me={me} onLogout={onLogout} theme={theme} onTheme={onTheme} onHide={() => setHideSide(true)} />}
+        <Sidebar me={me} onLogout={onLogout} theme={theme} onTheme={onTheme} />
         <div className="shell-main">
           <div className="store_nav"><div className="store_nav_inner">
         <div className="drop"><button>Your Store</button><div className="drop_menu">
