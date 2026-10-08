@@ -4,7 +4,33 @@ import { api } from './api.js';
 
 export function Login({ onLogin }) {
   const [err, setErr] = useState('');
+  const [googleId, setGoogleId] = useState(null);
   const nav = useNavigate();
+  useEffect(() => {
+    api('/config').then((c) => setGoogleId(c.googleClientId)).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!googleId || window.__pvGsi) return;
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.onload = () => {
+      try {
+        window.__pvGsi = true;
+        window.google.accounts.id.initialize({
+          client_id: googleId,
+          callback: async (resp) => {
+            try {
+              const r = await api('/auth/google', { method: 'POST', body: { idToken: resp.credential } });
+              onLogin(r.user); nav('/');
+            } catch (e) { setErr(e.message); }
+          },
+        });
+        window.google.accounts.id.renderButton(document.getElementById('pv-google-btn'), { theme: 'filled_black', size: 'large', width: 360 });
+      } catch {}
+    };
+    document.body.appendChild(s);
+  }, [googleId]);
   const submit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -13,6 +39,8 @@ export function Login({ onLogin }) {
   };
   return <div className="auth-box"><h1>Login</h1>{err && <p className="err">{err}</p>}
     <form onSubmit={submit} style={{ display: 'grid', gap: 10 }}><input name="email" placeholder="Email" required /><input name="password" type="password" placeholder="Password" required /><button className="cta-btn">Login</button></form>
+    {googleId ? <><div className="row" style={{ alignItems: 'center' }}><div className="rail-sep" style={{ flex: 1 }} /><span className="tiny">or</span><div className="rail-sep" style={{ flex: 1 }} /></div><div id="pv-google-btn" style={{ display: 'flex', justifyContent: 'center' }} /></>
+      : <p className="tiny">Google login is not configured on this server. See README to add GOOGLE_CLIENT_ID.</p>}
     <p className="tiny">No account? <Link to="/register">Join free</Link> · Demo: gamer@vault.gg / password123</p></div>;
 }
 
@@ -89,7 +117,7 @@ export function Profile({ me }) {
     {msg && <p className="tiny">{msg}</p>}
     <h2>Library preview</h2>
     <div className="card-row">{(d.user.library || []).slice(0, 4).map((e, ix) => e.game && <Link key={ix} className="gcard sm" to={`/games/${e.game.slug}`}><img src={e.game.coverImage} /><div className="gmeta"><b>{e.game.title}</b></div></Link>)}</div>
-    {d.isSelf && <><h2>My orders</h2>{(d.orders || []).map((o) => <Link key={o._id} className="thread" to={`/orders/${o._id}`}><b>#{String(o._id).slice(-6)} · ${o.grandTotal.toFixed(2)}</b><span>{o.status}</span></Link>)}</>}
+    {d.isSelf ? (<div><h2>My orders</h2>{(d.orders || []).map((o) => <Link key={o._id} className="thread" to={`/orders/${o._id}`}><b>#{String(o._id).slice(-6)} · ${o.grandTotal.toFixed(2)}</b><span>{o.status}</span></Link>)}</div>) : null}
   </>);
 }
 
@@ -292,8 +320,8 @@ export function Settings({ me, onMe, theme, onTheme }) {
       <div className="panel"><h3>Appearance</h3>
         <p className="tiny">Pick a theme — saved on this device.</p>
         <div className="row">
-          <button className={'ghost-btn' + (theme === 'dark' ? ' current' : '')} onClick={() => onTheme('dark')}>🌙 Dark</button>
-          <button className={'ghost-btn' + (theme === 'light' ? ' current' : '')} onClick={() => onTheme('light')}>☀️ Light</button>
+          <button className={'ghost-btn' + (theme === 'dark' ? ' current' : '')} onClick={() => onTheme('dark')}><span className="glyph glyph-moon" />Dark</button>
+          <button className={'ghost-btn' + (theme === 'light' ? ' current' : '')} onClick={() => onTheme('light')}><span className="glyph glyph-sun" />Light</button>
         </div>
       </div>
       <div className="panel"><h3>Content preferences</h3>

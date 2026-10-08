@@ -141,5 +141,5 @@ export function Recommendations() {
   useEffect(() => { api('/recommendations').then(setD).catch(() => setD({ recs: [] })); }, []);
   if (!d) return <p className="muted">Loading…</p>;
   return (<><h1>For you</h1><p className="tiny">Based on: {(d.topGenres || []).join(', ')}</p>
-    <div className="card-grid">{(d.recs || []).map((g) => <GameCard key={g._id} g={g} />)}</div></>);
+    <div className="card-grid">{(d.recs || []).map((g, ix) => <GameCard key={g._id} g={g} i={ix} />)}</div></>);
 }

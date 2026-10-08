@@ -231,4 +231,62 @@ a.tag:hover{background:#f5a5242c;color:var(--accent)}
   .cart-row{grid-template-columns:80px 1fr auto}
   .sys_cols{grid-template-columns:1fr}
   h1{font-size:36px}
+  .rail{display:none}
+}
+
+/* ---------- entrance + motion ---------- */
+@keyframes riseIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes glowPulse{0%,100%{box-shadow:0 0 0 rgba(245,165,36,0)}50%{box-shadow:0 0 34px rgba(245,165,36,.28)}}
+@keyframes dotPulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes shineSweep{from{transform:translateX(-120%) skewX(-18deg)}to{transform:translateX(240%) skewX(-18deg)}}
+.page-enter{animation:riseIn .35s ease both}
+.card-enter{animation:riseIn .45s ease both}
+.spotlight{animation:glowPulse 5s ease-in-out infinite}
+.cta-btn{position:relative;overflow:hidden}
+.cta-btn:hover::after{content:"";position:absolute;top:0;bottom:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:shineSweep .7s ease}
+.ghost-btn{position:relative;overflow:hidden}
+
+/* live dot (no emoji) */
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e5484d;margin-right:6px;animation:dotPulse 1.6s infinite;vertical-align:1px}
+
+/* theme glyphs (pure CSS, no emoji) */
+.glyph{ display:inline-block; width:14px; height:14px; border-radius:50%; margin-right:7px; vertical-align:-1px; }
+.glyph-sun{ background:radial-gradient(circle at 35% 35%, #ffd97a, var(--accent)); box-shadow:0 0 8px #f5a52488; }
+.glyph-moon{ background:transparent; box-shadow:4px -1px 0 2px var(--accent); width:12px; height:12px; }
+
+/* ---------- left settings rail (all pages) ---------- */
+.rail{position:fixed;left:14px;top:50%;transform:translateY(-50%);z-index:60;display:flex;flex-direction:column;gap:8px;background:var(--card);backdrop-filter:blur(16px);border:1px solid rgba(245,165,36,.25);border-radius:16px;padding:10px 8px;transition:width .2s ease;overflow:hidden}
+.rail .rail-btn{display:flex;align-items:center;gap:10px;background:none;border:0;color:var(--dim);cursor:pointer;padding:9px;border-radius:10px;font-size:12.5px;font-weight:700;white-space:nowrap;font-family:inherit;width:100%;text-align:left}
+.rail .rail-btn:hover{background:#f5a5241c;color:var(--accent)}
+.rail .rail-btn.active{color:var(--accent)}
+.rail .rail-ico{width:22px;height:22px;flex:0 0 22px;display:flex;align-items:center;justify-content:center}
+.rail .rail-label{display:none}
+.rail.open .rail-label{display:inline}
+.rail.open{width:210px}
+.rail .rail-sep{height:1px;background:rgba(245,165,36,.2);margin:2px 4px}
+.rail .rail-note{font-size:11px;color:var(--faint);padding:2px 9px}
+
+/* ---------- hero carousel ---------- */
+.carousel{position:relative}
+.carousel_view{overflow:hidden;border-radius:20px}
+.carousel_track{display:flex;transition:transform .55s cubic-bezier(.22,.8,.24,1)}
+.carousel_slide{min-width:100%}
+.carousel_arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:2;background:rgba(10,7,4,.65);border:1px solid rgba(245,165,36,.4);color:var(--accent);width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:18px;line-height:1}
+.carousel_arrow:hover{background:#f5a5242c}
+.carousel_arrow.prev{left:12px}
+.carousel_arrow.next{right:12px}
+.carousel_dots{display:flex;gap:8px;justify-content:center;margin-top:12px}
+.carousel_dots button{width:26px;height:4px;border-radius:2px;border:0;background:#f5a52433;cursor:pointer;padding:0}
+.carousel_dots button.on{background:var(--accent)}
+.carousel_count{position:absolute;top:12px;right:14px;z-index:2;font-size:11px;font-weight:800;letter-spacing:.1em;background:rgba(10,7,4,.65);border:1px solid rgba(245,165,36,.4);color:var(--accent);padding:4px 10px;border-radius:99px}
+
+/* news list */
+.news-item{display:block;padding:10px 0;border-bottom:1px solid #4d403033}
+.news-item:last-child{border-bottom:0}
+.news-item b{color:var(--bright);font-size:13px}
+.news-item span{color:var(--faint);font-size:11.5px}
+
+@media (prefers-reduced-motion: reduce){
+  .spotlight,.page-enter,.card-enter,.live-dot,.cta-btn:hover::after{animation:none}
+  .carousel_track{transition:none}
 }

@@ -701,4 +701,49 @@ router.get('/live/:appid', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Steam game news (public ISteamNews API).
+router.get('/news/:appid', async (req, res) => {
+  try {
+    const { newsFor } = require('../lib/steamLive');
+    res.json({ news: await newsFor(Number(req.params.appid), Math.min(5, Number(req.query.count) || 3)) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Public client config (Google OAuth client id, when configured).
+router.get('/config', (req, res) => {
+  res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || null });
+});
+
+// Login with Google (requires GOOGLE_CLIENT_ID in .env — see README).
+// Verifies the ID token with Google, then finds or creates the account.
+router.post('/auth/google', async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    if (!idToken) return res.status(400).json({ error: 'Missing ID token.' });
+    const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    const info = await r.json().catch(() => ({}));
+    if (!r.ok || !info.email) return res.status(401).json({ error: 'Invalid Google token.' });
+    const conf = process.env.GOOGLE_CLIENT_ID;
+    if (conf && info.aud !== conf) return res.status(401).json({ error: 'Token audience mismatch.' });
+    const bcrypt = require('bcryptjs');
+    const crypto = require('crypto');
+    let user = await User.findOne({ email: String(info.email).toLowerCase() });
+    if (!user) {
+      let base = String(info.email).split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 18) || 'vaultuser';
+      let username = base, n = 0;
+      while (await User.findOne({ username })) username = `${base}${++n}`;
+      user = await User.create({
+        username, email: String(info.email).toLowerCase(),
+        passwordHash: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10),
+        displayName: String(info.name || '').slice(0, 40), avatar: String(info.picture || '').slice(0, 500),
+      });
+    } else if (info.picture && !user.avatar) {
+      user.avatar = String(info.picture).slice(0, 500);
+      await user.save();
+    }
+    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email };
+    res.json({ user: me(req) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 module.exports = router;

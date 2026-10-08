@@ -33,6 +33,8 @@ npm run dev            # http://localhost:3000
 
 MongoDB: install MongoDB Community Server (or point `MONGO_URI` at Atlas), make sure it listens on `mongodb://127.0.0.1:27017`. The server also runs with an empty DB (pages show empty states).
 
+Google login (optional): create an OAuth 2.0 Client ID at `console.cloud.google.com` (Web application, authorized JavaScript origin `http://localhost:3000`), set `GOOGLE_CLIENT_ID` in `.env`, restart. The login page then shows a real "Sign in with Google" button verified server-side.
+
 ## Routes (`/api/*` JSON, session-authenticated)
 
 | Mount | What |
