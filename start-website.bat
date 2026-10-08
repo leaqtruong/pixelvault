@@ -19,9 +19,12 @@ if not exist client\node_modules (
   echo [PixelVault] First run - installing frontend packages, one moment...
   call npm install --prefix client --no-audit --no-fund
 )
-if not exist client\dist (
-  echo [PixelVault] Building React frontend, one moment...
-  call npm run build --prefix client
+echo [PixelVault] Building latest frontend, one moment...
+call npm run build --prefix client
+if errorlevel 1 (
+  echo [PixelVault] Frontend build failed - fix errors above and retry.
+  pause
+  exit /b 1
 )
 echo [PixelVault] Starting store at http://localhost:3000 ...
 echo [PixelVault] Leave this window open. Press Ctrl+C to stop the website.
