@@ -58,6 +58,16 @@ function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
           <button className={'ghost-btn sm' + (mature ? ' current' : '')} onClick={flipMature}>{mature ? 'Mature hidden' : 'Show mature'}</button>
         </div>
       )}
+      <div className="rail-card browse-only">
+        <h3>Browse</h3>
+        <div className="rail-links">
+          <Link to="/games">Store</Link>
+          <Link to="/toys">Toys</Link>
+          <Link to="/community">Community</Link>
+          <Link to="/mods">Mods</Link>
+          <Link to="/dev">Dev Portal</Link>
+        </div>
+      </div>
       <div className="rail-card">
         <h3>Vault</h3>
         <div className="rail-links">
@@ -99,6 +109,9 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
             <Link className={linkCls('/dev')} to="/dev">Dev Portal</Link>
           </nav>
           <div className="top-actions">
+            <form className="store_search head-search" onSubmit={(e) => { e.preventDefault(); nav('/games?q=' + encodeURIComponent(e.target.q.value)); }}>
+              <input name="q" placeholder="Search games…" /><button>Go</button>
+            </form>
             <Link className="action-btn" to="/cart">Cart{cartN > 0 && <span className="cart-badge">{cartN}</span>}</Link>
             {me ? (
               <>
@@ -136,9 +149,6 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
         </div></div>
         <Link to="/community">Forums</Link>
         <Link to="/mods">Workshop</Link>
-        <form className="store_search" onSubmit={(e) => { e.preventDefault(); nav('/games?q=' + encodeURIComponent(e.target.q.value)); }}>
-          <input name="q" placeholder="search" /><button>Go</button>
-        </form>
       </div></div>
       <main className="wrap page-enter" key={loc.pathname + loc.search}>{children}</main>
       <footer className="footer">PixelVault demo storefront — coursework project. Game data via Steam Store API, merch via official stores. Keys are DEMO placeholders.<br /><span className="tiny">build {BUILD}</span></footer>
