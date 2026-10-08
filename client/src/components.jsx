@@ -1,6 +1,7 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { api, priceOf } from './api.js';
+import { BUILD } from './version.js';
 
 function Sidebar({ me, onLogout, theme, onTheme }) {
   const nav = useNavigate();
@@ -34,10 +35,11 @@ function Sidebar({ me, onLogout, theme, onTheme }) {
         ) : (
           <>
             <b>Welcome, guest</b>
-            <p className="tiny">Login to buy keys, track orders and filter content.</p>
-            <div className="row">
-              <Link className="ghost-btn sm" to="/login">Login</Link>
-              <Link className="cta-btn sm" to="/register">Join free</Link>
+            <p className="tiny">Keys, toys and tracking live here once you join.</p>
+            <div className="rail-links">
+              <Link to="/games?onSale=1">Today's deals</Link>
+              <Link to="/toys">Toy shelf</Link>
+              <Link to="/register">Why join?</Link>
             </div>
           </>
         )}
@@ -94,7 +96,6 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
             <Link className={linkCls('/dev')} to="/dev">Dev Portal</Link>
           </nav>
           <div className="top-actions">
-            <button className="ghost-btn sm" title="Show / hide side panel" onClick={() => setHideSide(!hideSide)}>Panel</button>
             <Link className="action-btn" to="/cart">Cart{cartN > 0 && <span className="cart-badge">{cartN}</span>}</Link>
             {me ? (
               <>
@@ -113,6 +114,7 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
       <div className={'shell' + (menu ? ' menu-open' : '') + (hideSide ? ' no-side' : '')}>
         {menu && <div className="scrim" onClick={() => setMenu(false)} />}
         <Sidebar me={me} onLogout={onLogout} theme={theme} onTheme={onTheme} />
+        <button className="side-edge" title={hideSide ? 'Show panel' : 'Hide panel'} onClick={() => setHideSide(!hideSide)}>{hideSide ? '›' : '‹'}</button>
         <div className="shell-main">
           <div className="store_nav"><div className="store_nav_inner">
         <div className="drop"><button>Your Store</button><div className="drop_menu">
@@ -137,7 +139,7 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
         </form>
       </div></div>
       <main className="wrap page-enter" key={loc.pathname + loc.search}>{children}</main>
-      <footer className="footer">PixelVault demo storefront — coursework project. Game data via Steam Store API, merch via official stores. Keys are DEMO placeholders.</footer>
+      <footer className="footer">PixelVault demo storefront — coursework project. Game data via Steam Store API, merch via official stores. Keys are DEMO placeholders.<br /><span className="tiny">build {BUILD}</span></footer>
         </div>
       </div>
     </>
