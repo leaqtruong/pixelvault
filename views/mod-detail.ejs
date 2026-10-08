@@ -1,0 +1,11 @@
+<%- include('partials/header') %>
+<p><a href="/mods">← all mods</a></p>
+<div class="two-col"><div>
+<h1><%= mod.title %></h1><p class="muted">for <a href="/games/<%= mod.game?.slug %>"><%= mod.game?.title %></a> · v<%= mod.version %> (game <%= mod.gameVersion %>) · <%= mod.loader %> · by @<%= mod.author?.username %></p>
+<p><%= mod.description %></p><p class="tiny">Tags: <%= (mod.tags||[]).join(', ') %></p>
+<div class="row"><form action="/mods/<%= mod._id %>/download" method="POST"><button class="cta-btn">Download (<%= mod.stats.downloads %>)</button></form>
+<form action="/mods/<%= mod._id %>/endorse" method="POST"><button class="ghost-btn">★ Endorse (<%= mod.stats.endorsements %>)</button></form></div>
+</div><div class="panel"><h3>Comments (<%= mod.comments.length %>)</h3>
+<% mod.comments.forEach(c=>{ %><p><b>@<%= c.user?.username %></b> <span class="tiny"><%= new Date(c.createdAt).toLocaleString() %></span><br><%= c.text %></p><hr><% }) %>
+<form action="/mods/<%= mod._id %>/comment" method="POST"><textarea name="text" placeholder="Does it work on 1.2? Report bugs…" required></textarea><button class="cta-btn sm">Comment</button></form></div></div>
+<%- include('partials/footer') %>

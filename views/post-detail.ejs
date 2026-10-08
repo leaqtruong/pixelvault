@@ -1,0 +1,10 @@
+<%- include('partials/header') %>
+<p><a href="/community/b/<%= post.board %>">← <%= post.board %></a></p>
+<h1><%= post.pinned?'[PINNED] ':'' %><%= post.title %></h1>
+<p class="tiny">by @<%= post.author?.username %> · <%= new Date(post.createdAt).toLocaleString() %> · Views: <%= post.views %> <%= post.game?`· <a href="/games/${post.game.slug}">${post.game.title}</a>`:'' %></p>
+<div class="panel"><p><%- post.body.replace(/\n/g,'<br>') %></p>
+<form action="/community/p/<%= post._id %>/like" method="POST"><button class="ghost-btn sm"><%= post.likes.length %> likes</button></form></div>
+<h3>Replies (<%= post.replies.length %>)</h3>
+<% post.replies.forEach(r=>{ %><div class="panel"><b>@<%= r.user?.username %></b> <span class="tiny"><%= new Date(r.createdAt).toLocaleString() %></span><p><%= r.text %></p></div><% }) %>
+<form class="panel" action="/community/p/<%= post._id %>/reply" method="POST"><textarea name="text" placeholder="Reply…" required></textarea><button class="cta-btn">Reply</button></form>
+<%- include('partials/footer') %>

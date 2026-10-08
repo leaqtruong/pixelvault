@@ -1,0 +1,17 @@
+<% /* Shared pager. Expects: total, totalPages, page, query. Renders Prev / numbers / Next. */ %>
+<% if (typeof totalPages !== 'undefined' && totalPages > 1) { %>
+<% const q = typeof query !== 'undefined' ? query : {}; %>
+<nav class="pager" aria-label="Pagination">
+  <% if (page > 1) { %><a class="ghost-btn sm" href="?<%= new URLSearchParams({ ...q, page: page - 1 }).toString() %>">← Prev</a><% } else { %><span class="ghost-btn sm disabled">← Prev</span><% } %>
+  <span class="pager_nums">
+  <% const win = 2; let start = Math.max(1, page - win); let end = Math.min(totalPages, page + win); %>
+  <% if (start > 1) { %><a class="ghost-btn sm" href="?<%= new URLSearchParams({ ...q, page: 1 }).toString() %>">1</a><% if (start > 2) { %><span class="tiny">…</span><% } %><% } %>
+  <% for (let p = start; p <= end; p++) { %>
+    <% if (p === page) { %><span class="ghost-btn sm current"><%= p %></span><% } else { %><a class="ghost-btn sm" href="?<%= new URLSearchParams({ ...q, page: p }).toString() %>"><%= p %></a><% } %>
+  <% } %>
+  <% if (end < totalPages) { %><% if (end < totalPages - 1) { %><span class="tiny">…</span><% } %><a class="ghost-btn sm" href="?<%= new URLSearchParams({ ...q, page: totalPages }).toString() %>"><%= totalPages %></a><% } %>
+  </span>
+  <% if (page < totalPages) { %><a class="ghost-btn sm" href="?<%= new URLSearchParams({ ...q, page: page + 1 }).toString() %>">Next →</a><% } else { %><span class="ghost-btn sm disabled">Next →</span><% } %>
+  <span class="tiny">Page <%= page %> of <%= totalPages %> · <%= typeof total !== 'undefined' ? total : '' %> items</span>
+</nav>
+<% } %>

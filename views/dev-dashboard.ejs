@@ -1,0 +1,16 @@
+<%- include('partials/header') %>
+<h1>Dev console <a class="cta-btn" href="/dev/new">+ Publish game</a> <a class="ghost-btn" href="/dev/toys">Toy shelf</a></h1>
+<div class="kpi-row">
+<div class="kpi"><span>Gross sales</span><b>$<%= gross.toFixed(2) %></b></div>
+<div class="kpi"><span>Your cut (70%)</span><b>$<%= devCut.toFixed(2) %></b></div>
+<div class="kpi"><span>Digital units</span><b><%= unitsD %></b></div>
+<div class="kpi"><span>Physical units</span><b><%= unitsP %></b></div>
+<div class="kpi"><span>Owed now</span><b>$<%= balance.toFixed(2) %></b><form action="/dev/payout" method="POST"><button class="ghost-btn sm">Request payout</button></form></div>
+</div>
+<div class="two-col"><div class="panel"><h3>Revenue by month</h3><canvas id="revChart" height="160"></canvas>
+<table class="tbl"><tr><th>Month</th><th>Gross</th></tr><% monthly.forEach(([m,v])=>{ %><tr><td><%= m %></td><td>$<%= v.toFixed(2) %></td></tr><% }) %></table></div>
+<div class="panel"><h3>By country</h3><table class="tbl"><% Object.entries(byCountry).forEach(([c,n])=>{ %><tr><td><%= c %></td><td><%= n %> orders</td></tr><% }) %></table>
+<h3>Your games</h3><% games.forEach(g=>{ %><p><a href="/games/<%= g.slug %>"><%= g.title %></a> — $<%= g.stats.revenueGross.toFixed(2) %> · <%= g.status %> · stock <%= g.physical.stock %> · keys <%= g.stats.keysAvailable||0 %><a class="ghost-btn sm" href="/dev/<%= g._id %>/edit">Edit / restock</a> <a class="ghost-btn sm" href="/dev/<%= g._id %>/keys">Keys</a></p><% }) %></div></div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>try{new Chart(document.getElementById('revChart'),{type:'bar',data:{labels:<%- JSON.stringify(monthly.map(m=>m[0])) %>,datasets:[{data:<%- JSON.stringify(monthly.map(m=>+m[1].toFixed(2))) %>}]},options:{plugins:{legend:{display:false}}}})}catch(e){}</script>
+<%- include('partials/footer') %>

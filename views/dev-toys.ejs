@@ -1,0 +1,11 @@
+<%- include('partials/header') %>
+<h1>Toy shelf <a class="ghost-btn sm" href="/dev">← Dev console</a></h1>
+<% if (typeof ok !== 'undefined' && ok) { %><p style="color:var(--green)">OK: <%= ok %></p><% } %>
+<div class="panel"><table class="tbl"><tr><th>Collectible</th><th>Brand</th><th>Price</th><th>Stock</th><th>Sold</th><th></th></tr>
+<% toys.forEach(t=>{ %>
+<tr><td><a href="/toys/<%= t.slug %>"><%= t.title %></a></td><td class="tiny"><%= t.brand %></td><td>$<%= t.price.toFixed(2) %></td>
+<td><form action="/dev/toys/<%= t._id %>/restock" method="POST" style="display:flex;gap:6px"><input type="number" name="stock" value="<%= t.stock %>" min="0" max="999" style="width:80px"><button class="ghost-btn sm">Save</button></form></td>
+<td><%= t.stats.unitsSold %></td><td class="tiny"><%= t.status %></td></tr>
+<% }) %>
+</table></div>
+<%- include('partials/footer') %>

@@ -1,0 +1,8 @@
+<%- include('partials/header') %>
+<h1>Community tavern <a class="cta-btn" href="/community/new">+ New thread</a></h1>
+<div class="card-grid"><% BOARDS.forEach(b=>{ %>
+<a class="panel" href="/community/b/<%= b.id %>"><b><%= b.name %></b><p class="muted"><%= b.desc %></p><span class="tiny"><%= countMap[b.id]||0 %> threads</span></a>
+<% }) %></div>
+<h2>Latest</h2>
+<% latest.forEach(t=>{ %><a class="thread" href="/community/p/<%= t._id %>"><b>[<%= t.board %>] <%= t.title %></b><span>@<%= t.author?.username %> · <%= t.replies?.length||0 %> replies</span></a><% }) %>
+<%- include('partials/footer') %>

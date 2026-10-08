@@ -1,0 +1,9 @@
+<%- include('partials/header') %>
+<div class="auth-box panel"><h1>New thread</h1>
+<% if(error){ %><p class="err"><%= error %></p><% } %>
+<form action="/community/new" method="POST">
+<div class="row"><select name="board"><% BOARDS.forEach(b=>{ %><option value="<%= b.id %>"><%= b.name %></option><% }) %></select>
+<select name="game"><option value="">No game link</option><% games.forEach(g=>{ %><option value="<%= g._id %>"><%= g.title %></option><% }) %></select></div>
+<input name="title" placeholder="Title *" required><textarea name="body" placeholder="Say it…" required rows="6"></textarea>
+<input name="tags" placeholder="tags, comma"><button class="cta-btn big">Post thread</button></form></div>
+<%- include('partials/footer') %>

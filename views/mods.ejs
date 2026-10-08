@@ -1,0 +1,11 @@
+<%- include('partials/header') %>
+<h1>Mod vault <a class="cta-btn" href="/mods/new">+ Upload mod</a></h1>
+<form class="filters" method="GET"><input name="q" placeholder="Search mods…" value="<%= query.q||'' %>">
+<select name="game"><option value="">All games</option><% games.forEach(g=>{ %><option value="<%= g._id %>" <%= query.game==String(g._id)?'selected':'' %>><%= g.title %></option><% }) %></select>
+<select name="sort"><option value="downloads">Top downloads</option><option value="endorsed" <%= query.sort==='endorsed'?'selected':'' %>>Most endorsed</option><option value="newest" <%= query.sort==='newest'?'selected':'' %>>Newest</option></select>
+<button class="cta-btn">Go</button></form>
+<div class="card-grid"><% mods.forEach(m=>{ %>
+<a class="panel mod" href="/mods/<%= m._id %>"><b><%= m.title %></b><span class="tiny"><%= m.game?.title %> · v<%= m.version %> · <%= m.loader %></span><p><%= m.tagline %></p><span class="tiny">DL <%= m.stats.downloads %> · ★ <%= m.stats.endorsements %> · by @<%= m.author?.username %></span></a>
+<% }) %></div>
+<% if(!mods.length){ %><p class="muted">No mods yet. Be the first chaos goblin.</p><% } %>
+<%- include('partials/footer') %>

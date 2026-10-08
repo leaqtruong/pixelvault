@@ -1,0 +1,141 @@
+<%- include('partials/header') %>
+<%
+  const sale = (game.price||0) > 0 && game.discountPct > 0;
+  const final = +((game.price||0) * (1-(game.discountPct||0)/100)).toFixed(2);
+  const avg = game.stats.reviewCount ? game.stats.reviewSum/game.stats.reviewCount : 0;
+  const verdict = !game.stats.reviewCount ? null : avg >= 4.5 ? 'Overwhelmingly Positive' : avg >= 4 ? 'Very Positive' : avg >= 3.5 ? 'Mostly Positive' : avg >= 3 ? 'Mixed' : 'Mostly Negative';
+  const rec = s => s >= 4 ? ['rec_yes','Recommended'] : s <= 2 ? ['rec_no','Not Recommended'] : ['','No verdict'];
+%>
+<p class="crumbs"><a href="/games<%= game.productType==='toy' ? '?type=toy' : '' %>"><%= game.productType==='toy' ? 'All Toys & Merch' : 'All Games' %></a> &gt; <a href="/games?genre=<%= encodeURIComponent((game.genres||['Indie'])[0]) %>"><%= (game.genres||['Indie'])[0] %></a> &gt; <%= game.title %></p>
+<div class="game_title_row"><h1><%= game.title %></h1><% if (game.productType==='toy') { %><span class="tiny" style="color:var(--amber)">★ OFFICIAL MERCH</span><% } %><a class="ghost-btn sm hub_btn" href="/community/b/game?game=<%= game._id %>">Community Hub</a></div>
+
+<div class="detail_grid">
+  <div>
+    <div class="shot_main"><img id="shot_main" src="<%= (game.screenshots&&game.screenshots[0])||game.coverImage %>"></div>
+    <div class="shot_strip"><% ((game.screenshots&&game.screenshots.length?game.screenshots:[game.coverImage]).slice(0,5)).forEach(s=>{ %><img src="<%= s %>" onclick="document.getElementById('shot_main').src=this.src" loading="lazy"><% }) %></div>
+    <div class="section">
+      <h3>About This <%= game.productType==='toy' ? 'Collectible' : 'Game' %></h3>
+      <p style="font-size:13px"><%= game.description %></p>
+      <% if (game.productType==='toy' && game.sourceUrl) { %><p class="tiny">Reference listing mirrored from <a href="<%= game.sourceUrl %>"><%= game.toy.brand %></a> for coursework illustration. Demo shop — ships from our warehouse.</p><% } %>
+      <% if (typeof relatedGame !== 'undefined' && relatedGame) { %><p><a class="ghost-btn sm" href="/games/<%= relatedGame.slug %>">🎮 View the game: <%= relatedGame.title %></a></p><% } %>
+      <div class="tags_row"><span style="color:var(--faint);font-size:11px">Popular user-defined tags:</span><% (game.tags||game.genres||[]).forEach(t=>{ %><a class="tag" href="/games?tag=<%= encodeURIComponent(t) %>"><%= t %></a><% }) %></div>
+    </div>
+    <% if (game.productType==='toy') { %>
+    <div class="section">
+      <h3>Collectible Details</h3>
+      <div class="sys_cols">
+        <div><ul>
+          <li><span class="k">Brand:</span> <%= game.toy.brand %></li>
+          <li><span class="k">Category:</span> <%= game.toy.category %></li>
+          <li><span class="k">Material:</span> <%= game.toy.material %></li>
+        </ul></div>
+        <div><ul>
+          <li><span class="k">Size:</span> <%= game.toy.size %></li>
+          <li><span class="k">Age:</span> <%= game.toy.age %>+</li>
+          <li><span class="k">Ships from:</span> <%= game.physical.warehouse %></li>
+        </ul></div>
+      </div>
+    </div>
+    <% } else { %>
+    <div class="section">
+      <h3>System Requirements</h3>
+      <div class="sys_cols">
+        <div><h5>Minimum</h5><ul>
+          <li><span class="k">OS:</span> <%= game.systemReq?.os||'Windows 10 64-bit' %></li>
+          <li><span class="k">Processor:</span> <%= game.systemReq?.cpu||'Quad-core 3.0 GHz' %></li>
+          <li><span class="k">Memory:</span> <%= game.systemReq?.ram||'8 GB RAM' %></li>
+          <li><span class="k">Graphics:</span> <%= game.systemReq?.gpu||'GTX 1060' %></li>
+          <li><span class="k">Storage:</span> <%= game.systemReq?.storage||'20 GB available space' %></li>
+        </ul></div>
+        <div><h5>Recommended</h5><ul>
+          <li><span class="k">OS:</span> <%= game.systemReq?.os||'Windows 10 64-bit' %></li>
+          <li><span class="k">Processor:</span> <%= game.systemReq?.cpu||'6-core 3.6 GHz' %></li>
+          <li><span class="k">Memory:</span> 16 GB RAM</li>
+          <li><span class="k">Graphics:</span> RTX 3060 or better</li>
+          <li><span class="k">Storage:</span> SSD recommended</li>
+        </ul></div>
+      </div>
+    </div>
+    <% } %>
+    <div class="section">
+      <h3>Customer Reviews (<%= reviews.length %>)</h3>
+      <form class="panel" style="margin:0 0 12px" action="/reviews/<%= game._id %>" method="POST">
+        <h4 style="margin-top:0;color:var(--bright)">Write a review (must own this game)</h4>
+        <div class="row"><select name="stars"><option value="5">Recommend — 5</option><option value="4">Recommend — 4</option><option value="3">Neutral — 3</option><option value="2">Not Recommend — 2</option><option value="1">Not Recommend — 1</option></select><input name="title" placeholder="Headline" required></div>
+        <textarea name="body" placeholder="What did you like or dislike?" required style="margin-top:8px"></textarea>
+        <button class="cta-btn sm" style="margin-top:8px">Post review</button>
+      </form>
+      <% reviews.forEach(r=>{ const [cls, label] = rec(r.stars); %>
+        <div class="review_card">
+          <div class="avatar"><%= (r.user?.username||'?')[0].toUpperCase() %></div>
+          <div>
+            <p class="rec_flag <%= cls %>"><%= label %></p>
+            <p class="tiny"><%= r.playMinutesAtReview %> hrs on record · @<%= r.user?.username %></p>
+            <p style="font-size:13px"><b style="color:var(--bright)"><%= r.title %></b><br><%= r.body %></p>
+            <% if(r.devResponse?.text){ %><p class="devresp"><b>Developer response:</b> <%= r.devResponse.text %></p><% } %>
+            <div class="row" style="margin-top:6px">
+              <span class="tiny">Was this review helpful?</span>
+              <form action="/reviews/<%= r._id %>/helpful" method="POST"><button class="ghost-btn sm">Yes (<%= r.helpful.length %>)</button></form>
+              <% if(sessionUser && String(game.developer._id||game.developer)===String(sessionUser._id)){ %><form action="/reviews/<%= r._id %>/respond" method="POST" style="display:flex;gap:6px;flex:2"><input name="text" placeholder="Respond as developer…"><button class="ghost-btn sm">Respond</button></form><% } %>
+            </div>
+          </div>
+        </div>
+      <% }) %>
+      <% if(!reviews.length){ %><p class="muted">No reviews yet. Own the game and be the first to review it.</p><% } %>
+    </div>
+    <% if (game.productType!=='toy') { %>
+    <div class="section">
+      <h3>Workshop &amp; Discussions</h3>
+      <% mods.slice(0,4).forEach(m=>{ %><a class="thread" href="/mods/<%= m._id %>"><b><%= m.title %></b><span>DL <%= m.stats.downloads %> · ★ <%= m.stats.endorsements %></span></a><% }) %>
+      <div class="row" style="margin-top:8px"><a class="ghost-btn sm" href="/mods?game=<%= game._id %>">Browse Workshop</a><a class="ghost-btn sm" href="/mods/new">Upload a Mod</a></div>
+      <% threads.forEach(t=>{ %><a class="thread" href="/community/p/<%= t._id %>"><b><%= t.title %></b><span><%= t.replies?.length||0 %> replies</span></a><% }) %>
+    </div>
+    <% } %>
+  </div>
+  <aside class="game_info">
+    <img class="header_img<%= game.productType==='toy' ? ' toy' : '' %>" src="<%= game.coverImage %>">
+    <p style="font-size:13px"><%= game.tagline %></p>
+    <div class="review_line"><span class="k"><%= verdict ? 'All Reviews:' : 'Reviews:' %></span><span class="v"><% if (verdict) { %><a href="#reviews"><%= verdict %> (<%= game.stats.reviewCount %>)</a><% } else { %>No user reviews<% } %></span></div>
+    <div class="review_line"><span class="k">Release Date:</span><span class="v"><%= new Date(game.releaseDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) %></span></div>
+    <div class="meta_line"><span class="k"><%= game.productType==='toy' ? 'Brand:' : 'Developer:' %></span> <%= game.studioName %></div>
+    <% if (game.productType!=='toy') { %><div class="meta_line"><span class="k">Publisher:</span> <%= game.studioName %></div><% } %>
+    <% if (game.productType==='toy') { %>
+    <div class="meta_line"><span class="k">Category:</span> <%= game.toy.category %> · <%= game.toy.size %> · <%= game.toy.material %></div>
+    <% } else { %>
+    <div class="meta_line"><span class="k">Rating:</span> <%= game.rating %> · v<%= game.version %> · <%= game.fileSizeGB %> GB</div>
+    <div class="meta_line"><span class="k">Platforms:</span> <%= (game.platforms||['Windows']).join(' · ') %></div>
+    <% } %>
+    <% if (game.features && game.features.length) { %><div class="tags_row"><% game.features.slice(0,6).forEach(f=>{ %><span class="tag"><%= f %></span><% }) %></div><% } %>
+    <div class="tags_row"><% (game.genres||[]).forEach(t=>{ %><a class="tag" href="/games?genre=<%= encodeURIComponent(t) %>"><%= t %></a><% }) %></div>
+    <% if (game.productType==='toy') { %>
+    <div class="buy_area">
+      <h4>Buy <%= game.title %> — $<%= game.physical.price.toFixed(2) %></h4>
+      <p class="tiny"><%= game.physical.stock %> in stock · Ships from <%= game.physical.warehouse %> · Includes: <%= (game.physical.includes||[]).join(', ') %></p>
+      <div class="row" style="margin-top:8px">
+        <form action="/cart/add" method="POST" style="display:flex;gap:8px;flex:1"><input type="hidden" name="gameId" value="<%= game._id %>"><input type="hidden" name="edition" value="physical"><button class="cta-btn sm" <%= (game.physical.stock||0)===0?'disabled title="Sold out"':'' %>>Add to Cart</button></form>
+        <form action="/games/<%= game._id %>/wishlist" method="POST"><button class="ghost-btn sm">+ Wishlist</button></form>
+      </div>
+    </div>
+    <% } else { %>
+    <div class="buy_area">
+      <h4>Buy <%= game.title %></h4>
+      <div class="row"><span class="tiny" style="flex:1">Digital download · Cloud saves · Steam key via email + library</span><%- include('partials/price', { g: { price: game.price, discountPct: game.discountPct } }) %></div>
+      <% if ((game.price||0) > 0) { %>
+        <p class="tiny"><%= typeof keysAvailable !== 'undefined' ? keysAvailable : (game.stats.keysAvailable||0) %> keys in stock<% if (((typeof keysAvailable !== 'undefined' ? keysAvailable : (game.stats.keysAvailable||0))||0) === 0) { %> — out of stock<% } %></p>
+      <% } else { %><p class="tiny">Free to Play — no key needed, added straight to library.</p><% } %>
+      <div class="row" style="margin-top:8px">
+        <form action="/cart/add" method="POST" style="display:flex;gap:8px;flex:1"><input type="hidden" name="gameId" value="<%= game._id %>"><input type="hidden" name="edition" value="digital"><button class="cta-btn sm" <%= ((game.price||0) > 0 && ((typeof keysAvailable !== 'undefined' ? keysAvailable : (game.stats.keysAvailable||0))||0) === 0) ? 'disabled title="Out of keys"' : '' %>>Add to Cart</button></form>
+        <form action="/games/<%= game._id %>/wishlist" method="POST"><button class="ghost-btn sm">+ Wishlist</button></form>
+      </div>
+    </div>
+    <% if(game.physical?.enabled && game.productType!=='toy'){ %>
+    <div class="buy_area">
+      <h4>Buy Physical Box — $<%= game.physical.price.toFixed(2) %></h4>
+      <p class="tiny"><%= game.physical.stock %> in stock · Ships from <%= game.physical.warehouse %> · Includes: <%= (game.physical.includes||[]).join(', ') %></p>
+      <form action="/cart/add" method="POST"><input type="hidden" name="gameId" value="<%= game._id %>"><input type="hidden" name="edition" value="physical"><button class="ghost-btn sm">Add Physical to Cart</button></form>
+    </div>
+    <% } %>
+    <% } %>
+  </aside>
+</div>
+<%- include('partials/footer') %>

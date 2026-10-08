@@ -1,0 +1,25 @@
+<%- include('partials/header') %>
+<h1>Checkout</h1>
+<div class="two-col">
+<div class="panel">
+<form action="/checkout/place" method="POST" id="checkout-form">
+<h3>1 · Shipping method</h3>
+<label><input type="radio" name="method" value="standard" <%= method==='standard'?'checked':'' %>> Standard — $4.99 (+weight, free over $75)</label><br>
+<label><input type="radio" name="method" value="express" <%= method==='express'?'checked':'' %>> Express — $14.99 + weight</label><br>
+<label><input type="radio" name="method" value="overnight" <%= method==='overnight'?'checked':'' %>> Overnight — $29.99 + weight</label>
+<h3>2 · Ship to</h3>
+<input name="fullName" placeholder="Full name" value="<%= user.addresses?.[0]?.fullName||'' %>" required>
+<input name="street" placeholder="Street" value="<%= user.addresses?.[0]?.street||'' %>" required>
+<div class="row"><input name="city" placeholder="City" value="<%= user.addresses?.[0]?.city||'' %>" required><input name="region" placeholder="State" value="<%= user.addresses?.[0]?.region||'' %>"><input name="postal" placeholder="ZIP" value="<%= user.addresses?.[0]?.postal||'' %>" required></div>
+<div class="row"><input name="country" placeholder="Country" value="<%= user.addresses?.[0]?.country||'US' %>"><input name="phone" placeholder="Phone" value="<%= user.addresses?.[0]?.phone||'' %>"></div>
+<h3>3 · Payment (demo)</h3>
+<input name="cardLast4" placeholder="Card last 4" maxlength="4" value="4242">
+<button class="cta-btn big">Pay $<%= grand.toFixed(2) %> →</button>
+</form>
+</div>
+<div class="panel"><h3>Order summary</h3>
+<% items.forEach(i=>{ %><p><%= i.qty %>× <%= i.title %> (<%= i.edition %>) — $<%= (i.unitPrice*i.qty).toFixed(2) %></p><% }) %>
+<hr><p>Subtotal: $<%= subtotal.toFixed(2) %></p><p>Tax (8%): $<%= tax.toFixed(2) %></p><p>Shipping (<%= method %>, <%= weight %> lb): $<%= shipCost.toFixed(2) %></p><h3>Total: $<%= grand.toFixed(2) %></h3>
+<p class="tiny"><a href="/checkout?method=standard">standard</a> · <a href="/checkout?method=express">express</a> · <a href="/checkout?method=overnight">overnight</a></p></div>
+</div>
+<%- include('partials/footer') %>

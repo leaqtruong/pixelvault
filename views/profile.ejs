@@ -1,0 +1,9 @@
+<%- include('partials/header') %>
+<h1>@<%= user.username %> <%= user.role!=='user'?`· ${user.role}`:'' %></h1>
+<p class="muted"><%= user.bio||'No bio yet.' %> · joined <%= new Date(user.createdAt).toLocaleDateString() %></p>
+<% if(isSelf){ %><form class="panel" action="/users/me" method="POST"><h4>Edit profile</h4><input name="avatar" placeholder="Avatar URL" value="<%= user.avatar||'' %>"><textarea name="bio" placeholder="Bio"><%= user.bio||'' %></textarea><button class="ghost-btn">Save</button></form><% } %>
+<div class="two-col"><div><h2>Library (<%= user.library.length %>)</h2>
+<% user.library.slice(0,10).forEach(e=>{ if(!e.game) return; %><p><a href="/games/<%= e.game.slug %>"><%= e.game.title %></a> — <%= Math.floor((e.playMinutes||0)/60) %>h <%= (e.playMinutes||0)%60 %>m</p><% }) %>
+<a href="/library">Full library →</a></div>
+<div><h2>Recent orders</h2><% orders.forEach(o=>{ %><p><a href="/orders/<%= o._id %>">#<%= String(o._id).slice(-6) %></a> — $<%= o.grandTotal.toFixed(2) %> · <%= o.status %></p><% }) %></div></div>
+<%- include('partials/footer') %>

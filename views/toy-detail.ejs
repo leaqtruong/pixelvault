@@ -1,0 +1,48 @@
+<%- include('partials/header') %>
+<p class="crumbs"><a href="/toys">All Toys &amp; Merch</a> &gt; <a href="/toys?category=<%= encodeURIComponent(toy.category) %>"><%= toy.category %></a> &gt; <%= toy.title %></p>
+<div class="game_title_row"><h1><%= toy.title %></h1><span class="tiny" style="color:var(--amber)">★ OFFICIAL MERCH</span></div>
+
+<div class="detail_grid">
+  <div>
+    <div class="shot_main"><img id="shot_main" src="<%= (toy.screenshots&&toy.screenshots[0])||toy.coverImage %>"></div>
+    <% if (toy.screenshots && toy.screenshots.length > 1) { %>
+    <div class="shot_strip"><% toy.screenshots.slice(0,5).forEach(s=>{ %><img src="<%= s %>" onclick="document.getElementById('shot_main').src=this.src" loading="lazy"><% }) %></div>
+    <% } %>
+    <div class="section">
+      <h3>About This Collectible</h3>
+      <p style="font-size:13px"><%= toy.description %></p>
+      <% if (toy.sourceUrl) { %><p class="tiny">Reference listing mirrored from <a href="<%= toy.sourceUrl %>"><%= toy.brand %></a> for coursework illustration. Demo shop — ships from our warehouse.</p><% } %>
+      <% if (typeof relatedGame !== 'undefined' && relatedGame) { %><p><a class="ghost-btn sm" href="/games/<%= relatedGame.slug %>">🎮 View the game: <%= relatedGame.title %></a></p><% } %>
+    </div>
+    <div class="section">
+      <h3>Collectible Details</h3>
+      <div class="sys_cols">
+        <div><ul>
+          <li><span class="k">Brand:</span> <%= toy.brand %></li>
+          <li><span class="k">Category:</span> <%= toy.category %></li>
+          <li><span class="k">Material:</span> <%= toy.material %></li>
+        </ul></div>
+        <div><ul>
+          <li><span class="k">Size:</span> <%= toy.size %></li>
+          <li><span class="k">Age:</span> <%= toy.age %>+</li>
+          <li><span class="k">Ships from:</span> <%= toy.warehouse %></li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+  <aside class="game_info">
+    <img class="header_img toy" src="<%= toy.coverImage %>">
+    <p style="font-size:13px"><%= toy.tagline %></p>
+    <div class="meta_line"><span class="k">Brand:</span> <%= toy.brand %></div>
+    <div class="meta_line"><span class="k">Category:</span> <%= toy.category %> · <%= toy.size %> · <%= toy.material %></div>
+    <div class="buy_area">
+      <h4>Buy <%= toy.title %> — $<%= toy.price.toFixed(2) %></h4>
+      <p class="tiny"><%= toy.stock %> in stock · Ships from <%= toy.warehouse %> · Includes: <%= (toy.includes||[]).join(', ') %></p>
+      <div class="row" style="margin-top:8px">
+        <form action="/cart/add" method="POST" style="display:flex;gap:8px;flex:1"><input type="hidden" name="toyId" value="<%= toy._id %>"><button class="cta-btn sm" <%= (toy.stock||0)===0?'disabled title="Sold out"':'' %>>Add to Cart</button></form>
+        <form action="/toys/<%= toy._id %>/wishlist" method="POST"><button class="ghost-btn sm">+ Wishlist</button></form>
+      </div>
+    </div>
+  </aside>
+</div>
+<%- include('partials/footer') %>

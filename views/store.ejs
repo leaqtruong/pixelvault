@@ -1,0 +1,54 @@
+<%- include('partials/header') %>
+<h1>All Products</h1>
+<div class="store_layout">
+  <aside>
+    <div class="side_box"><h4>Narrow by Price</h4>
+      <a href="/games?maxPrice=0">Free to Play</a>
+      <a href="/games?maxPrice=10">Under $10</a>
+      <a href="/games?maxPrice=20">Under $20</a>
+      <a href="/games?maxPrice=40">Under $40</a>
+    </div>
+    <div class="side_box"><h4>Steam Genres</h4>
+      <% (typeof STEAM_GENRES !== 'undefined' && STEAM_GENRES.length ? STEAM_GENRES : genres).slice(0,16).forEach(g=>{ %><a href="/games?genre=<%= encodeURIComponent(g) %>"><%= g %></a><% }) %>
+    </div>
+    <div class="side_box"><h4>Platforms</h4>
+      <% (typeof STEAM_PLATFORMS !== 'undefined' ? STEAM_PLATFORMS : []).forEach(p=>{ %><a href="/games?platform=<%= encodeURIComponent(p) %>"><%= p %></a><% }) %>
+    </div>
+    <% if (typeof tags !== 'undefined' && tags.length) { %>
+    <div class="side_box"><h4>Popular Tags</h4>
+      <% tags.slice(0,12).forEach(t=>{ %><a href="/games?tag=<%= encodeURIComponent(t) %>"><%= t %></a><% }) %>
+    </div>
+    <% } %>
+    <div class="side_box"><h4>Show Only</h4>
+      <a href="/games?onSale=1">Special Offers</a>
+      <a href="/games?moddable=1">Moddable</a>
+      <a href="/games?sort=newest">New &amp; Trending</a>
+      <a href="/games?sort=popular">Top Sellers</a>
+    </div>
+  </aside>
+  <div>
+    <form class="filters" method="GET" action="/games">
+      <input name="q" placeholder="search the store" value="<%= query.q||'' %>">
+      <select name="genre"><option value="">All genres</option><% genres.forEach(g=>{ %><option value="<%= g %>" <%= query.genre===g?'selected':'' %>><%= g %></option><% }) %></select>
+      <select name="platform"><option value="">All platforms</option><option value="Windows" <%= query.platform==='Windows'?'selected':'' %>>Windows</option><option value="Mac" <%= query.platform==='Mac'?'selected':'' %>>Mac</option><option value="Linux" <%= query.platform==='Linux'?'selected':'' %>>Linux</option><option value="Steam Deck" <%= query.platform==='Steam Deck'?'selected':'' %>>Steam Deck</option><option value="VR" <%= query.platform==='VR'?'selected':'' %>>VR</option></select>
+      <select name="sort"><option value="popular" <%= query.sort==='popular'?'selected':'' %>>Top sellers</option><option value="newest" <%= query.sort==='newest'?'selected':'' %>>New releases</option><option value="rating" <%= query.sort==='rating'?'selected':'' %>>Top rated</option><option value="priceAsc" <%= query.sort==='priceAsc'?'selected':'' %>>Price: low to high</option><option value="priceDesc" <%= query.sort==='priceDesc'?'selected':'' %>>Price: high to low</option></select>
+      <button class="ghost-btn sm">Apply</button>
+    </form>
+    <p class="tiny"><%= typeof total !== 'undefined' ? total : games.length %> results<% if (typeof totalPages !== 'undefined') { %> · page <%= page %>/<%= totalPages %><% } %></p>
+    <div class="card-grid">
+    <% games.forEach(g=>{ const avg = g.stats.reviewCount ? (g.stats.reviewSum/g.stats.reviewCount) : 0; %>
+      <a class="gcard" href="/games/<%= g.slug %>">
+        <img src="<%= g.coverImage %>" loading="lazy">
+        <div class="gmeta"><b><%= g.title %></b>
+          <span class="genres"><%= (g.genres||[]).slice(0,2).join(', ') %><%= g.platforms ? ' · ' + (g.platforms||[]).slice(0,2).join('/') : '' %></span>
+          <span class="tiny"><% if (g.stats.reviewCount) { %><span style="color:var(--accent)"><%= avg >= 4 ? 'Very Positive' : avg >= 3 ? 'Mostly Positive' : 'Mixed' %></span> (<%= g.stats.reviewCount %>)<% } else { %>No user reviews<% } %><%= g.physical?.enabled ? ' · Boxed' : '' %><% if ((g.price||0) > 0) { %><%= (g.stats.keysAvailable||0) > 0 ? ' · Keys in stock' : ' · Out of keys' %><% } %></span>
+          <%- include('partials/price', { g }) %>
+        </div>
+      </a>
+    <% }) %>
+    </div>
+    <% if(!games.length){ %><div class="section"><p class="muted">No titles match those filters. <a href="/games">Clear search</a></p></div><% } %>
+    <%- include('partials/pager', { total, totalPages, page, query }) %>
+  </div>
+</div>
+<%- include('partials/footer') %>
