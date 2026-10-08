@@ -3,6 +3,14 @@ import { useEffect, useState } from 'react';
 import { api, priceOf } from './api.js';
 import { BUILD } from './version.js';
 
+function ApiStatus() {
+  const [s, setS] = useState(null);
+  useEffect(() => {
+    api('/stats').then((d) => setS(`${d.games} games · ${d.toys} toys`)).catch(() => setS('API offline'));
+  }, []);
+  return <span className="tiny"> · API: {s || '…'}</span>;
+}
+
 function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
   const nav = useNavigate();
   const [mature, setMature] = useState(null);
@@ -151,7 +159,7 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
         <Link to="/mods">Workshop</Link>
       </div></div>
       <main className="wrap page-enter" key={loc.pathname + loc.search}>{children}</main>
-      <footer className="footer">PixelVault demo storefront — coursework project. Game data via Steam Store API, merch via official stores. Keys are DEMO placeholders.<br /><span className="tiny">build {BUILD}</span></footer>
+      <footer className="footer">PixelVault demo storefront — coursework project. Game data via Steam Store API, merch via official stores. Keys are DEMO placeholders.<br /><span className="tiny">build {BUILD}</span><ApiStatus /></footer>
         </div>
       </div>
     </>
