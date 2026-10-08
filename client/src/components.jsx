@@ -7,13 +7,12 @@ const IcoMoon = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="non
 const IcoSliders = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2.2" /><circle cx="10" cy="17" r="2.2" /></svg>);
 const IcoTag = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h7l9 9-7 7-9-9z" /><circle cx="9" cy="9" r="1.6" /></svg>);
 
-function Rail({ me, theme, onTheme }) {
-  const [open, setOpen] = useState(() => { try { return localStorage.getItem('pv-rail') === 'open'; } catch { return false; } });
+function Sidebar({ me, onLogout, theme, onTheme }) {
+  const nav = useNavigate();
   const [mature, setMature] = useState(null);
-  useEffect(() => { try { localStorage.setItem('pv-rail', open ? 'open' : 'shut'); } catch {} }, [open]);
   useEffect(() => {
-    if (open && me) api('/users/' + me.username).then((d) => setMature(!!d.user?.preferences?.matureFilter)).catch(() => {});
-  }, [open, me]);
+    if (me) api('/users/' + me.username).then((d) => setMature(!!d.user?.preferences?.matureFilter)).catch(() => {});
+  }, [me]);
   const flipMature = async () => {
     try {
       await api('/users/me', { method: 'POST', body: { matureFilter: !mature } });
@@ -21,30 +20,53 @@ function Rail({ me, theme, onTheme }) {
     } catch {}
   };
   return (
-    <aside className={'rail' + (open ? ' open' : '')} aria-label="Quick settings">
-      <button className="rail-btn" title="Appearance" onClick={onTheme}>
-        <span className="rail-ico">{theme === 'light' ? <IcoMoon /> : <IcoSun />}</span>
-        <span className="rail-label">{theme === 'light' ? 'Dark mode' : 'Light mode'}</span>
-      </button>
+    <aside className="side-rail" aria-label="Settings and account">
+      <div className="rail-card">
+        {me ? (
+          <>
+            <div className="rail-user">
+              <span className="avatar-chip lg">{(me.username || '?')[0].toUpperCase()}</span>
+              <div><b>{me.username}</b><br /><span className="tiny">{me.role}</span></div>
+            </div>
+            <div className="rail-links">
+              <Link to="/library">My Library</Link>
+              <Link to="/orders">Orders</Link>
+              <Link to={`/users/${me.username}`}>Profile</Link>
+            </div>
+            <button className="ghost-btn sm" onClick={async () => { await api('/auth/logout', { method: 'POST' }); onLogout(); nav('/'); }}>Logout</button>
+          </>
+        ) : (
+          <>
+            <b>Welcome, guest</b>
+            <p className="tiny">Login to buy keys, track orders and filter content.</p>
+            <div className="row">
+              <Link className="ghost-btn sm" to="/login">Login</Link>
+              <Link className="cta-btn sm" to="/register">Join free</Link>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="rail-card">
+        <h3>Appearance</h3>
+        <div className="row">
+          <button className={'ghost-btn sm' + (theme === 'dark' ? ' current' : '')} onClick={() => onTheme('dark')}>Dark</button>
+          <button className={'ghost-btn sm' + (theme === 'light' ? ' current' : '')} onClick={() => onTheme('light')}>Light</button>
+        </div>
+      </div>
       {me && (
-        <button className={'rail-btn' + (mature ? ' active' : '')} title="Hide mature titles" onClick={flipMature}>
-          <span className="rail-ico"><IcoTag /></span>
-          <span className="rail-label">{mature ? 'Mature hidden' : 'Show mature'}</span>
-        </button>
+        <div className="rail-card">
+          <h3>Content</h3>
+          <button className={'ghost-btn sm' + (mature ? ' current' : '')} onClick={flipMature}>{mature ? 'Mature hidden' : 'Show mature'}</button>
+        </div>
       )}
-      <button className="rail-btn" title="Settings panel" onClick={() => setOpen(!open)}>
-        <span className="rail-ico"><IcoSliders /></span>
-        <span className="rail-label">{open ? 'Collapse' : 'Settings'}</span>
-      </button>
-      {open && (
-        <>
-          <div className="rail-sep" />
-          <Link className="rail-btn" to="/settings"><span className="rail-ico"><IcoSliders /></span><span className="rail-label">All settings</span></Link>
-          {me
-            ? <Link className="rail-btn" to="/library"><span className="rail-ico"><IcoTag /></span><span className="rail-label">My library</span></Link>
-            : <span className="rail-note">Login for content filters</span>}
-        </>
-      )}
+      <div className="rail-card">
+        <h3>Vault</h3>
+        <div className="rail-links">
+          <Link to="/settings">All settings</Link>
+          <Link to="/recommendations">For you</Link>
+          <Link to="/community">Forums</Link>
+        </div>
+      </div>
     </aside>
   );
 }
@@ -57,11 +79,13 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
     api('/cart').then((d) => setCartN((d.items || []).reduce((s, i) => s + i.qty, 0))).catch(() => {});
   }, [loc.pathname]);
   const linkCls = (to) => (loc.pathname === to ? 'active' : '');
+  const [menu, setMenu] = useState(false);
+  useEffect(() => { setMenu(false); }, [loc.pathname]);
   return (
     <>
-      <Rail me={me} theme={theme} onTheme={onTheme} />
       <header className="topbar">
         <div className="topbar_inner">
+          <button className="menu-btn" aria-label="Menu" onClick={() => setMenu(!menu)}>☰</button>
           <Link className="logo" to="/">PIXEL<span>VAULT</span></Link>
           <nav>
             <Link className={linkCls('/games')} to="/games">Store</Link>
@@ -87,7 +111,11 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
           </div>
         </div>
       </header>
-      <div className="store_nav"><div className="store_nav_inner">
+      <div className={'shell' + (menu ? ' menu-open' : '')}>
+        {menu && <div className="scrim" onClick={() => setMenu(false)} />}
+        <Sidebar me={me} onLogout={onLogout} theme={theme} onTheme={onTheme} />
+        <div className="shell-main">
+          <div className="store_nav"><div className="store_nav_inner">
         <div className="drop"><button>Your Store</button><div className="drop_menu">
           <Link to="/">Home</Link><Link to="/recommendations">Recommendations</Link><Link to="/library">Your Library</Link><Link to="/games?sort=newest">Recently Released</Link>
         </div></div>
@@ -111,6 +139,8 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
       </div></div>
       <main className="wrap page-enter" key={loc.pathname + loc.search}>{children}</main>
       <footer className="footer">PixelVault demo storefront — coursework project. Game data via Steam Store API, merch via official stores. Keys are DEMO placeholders.</footer>
+        </div>
+      </div>
     </>
   );
 }

@@ -18,6 +18,10 @@ export default function App() {
   if (!ready) return <p className="muted" style={{ padding: 40 }}>Loading PixelVault…</p>;
   return (
     <BrowserRouter>
+      <div className="bg-fx" aria-hidden="true">
+        <span className="shard" /><span className="shard" /><span className="shard" /><span className="shard" />
+        <span className="shard" /><span className="shard" /><span className="shard" /><span className="shard" />
+      </div>
       <Layout me={me} onLogout={() => setMe(null)} theme={theme} onTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}>
         <Routes>
           <Route path="/" element={<Home />} />
