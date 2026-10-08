@@ -94,7 +94,7 @@ img{background:#0d0b09}
 .shell.no-side .side-clip{width:0;opacity:0}
 .shell.no-side{grid-template-columns:auto minmax(0,1fr);gap:0 10px}
 .side-in{width:240px;display:flex;flex-direction:column;gap:12px}
-.side-edge{width:26px;flex-shrink:0;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ember);color:var(--accent);font-size:18px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;padding:0}
+.side-edge{width:26px;flex-shrink:0;align-self:stretch;min-height:420px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ember);color:var(--accent);font-size:20px;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;padding:0}
 .side-edge:hover{background:#f5a5241c}
 
 /* square everything — no round frames */
