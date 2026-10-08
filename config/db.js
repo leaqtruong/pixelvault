@@ -1,19 +1,29 @@
 const mongoose = require('mongoose');
-mongoose.set('bufferTimeoutMS', 2500);
+mongoose.set('bufferTimeoutMS', 30000);
+
+let connected = false;
+
+async function tryOnce(uri) {
+  await mongoose.connect(uri);
+  connected = true;
+  console.log('[db] Connected to MongoDB');
+}
 
 async function connectDB(uri) {
   if (!uri) {
     console.log('[db] No MONGO_URI set — running without database (pages will show empty states).');
     return false;
   }
-  try {
-    await mongoose.connect(uri);
-    console.log('[db] Connected to MongoDB');
-    return true;
-  } catch (err) {
-    console.error('[db] MongoDB connection failed:', err.message);
-    console.error('[db] Server still runs, but store data will be empty until DB is reachable.');
-    return false;
+  // Retry forever: the web server often boots before MongoDB is up.
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      await tryOnce(uri);
+      return true;
+    } catch (err) {
+      console.error('[db] MongoDB unreachable, retrying in 5s:', err.message);
+      await new Promise((r) => setTimeout(r, 5000));
+    }
   }
 }
 

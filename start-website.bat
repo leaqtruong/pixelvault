@@ -7,6 +7,16 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+netstat -ano | findstr :27017 >nul
+if errorlevel 1 (
+  if exist "E:\MongolDB\mongodb-win32-x86_64-windows-8.3.8\bin\mongod.exe" (
+    echo [PixelVault] Starting local MongoDB, one moment...
+    start "PixelVault MongoDB" "E:\MongolDB\mongodb-win32-x86_64-windows-8.3.8\bin\mongod.exe" --dbpath E:\MongolDB\data\db --port 27017 --bind_ip 127.0.0.1
+    timeout /t 5 >nul
+  ) else (
+    echo [PixelVault] WARNING: no MongoDB on :27017 - catalog will be empty. See README.
+  )
+)
 if not exist node_modules (
   echo [PixelVault] First run - installing packages, one moment...
   call npm install --no-audit --no-fund

@@ -59,7 +59,9 @@ function Carousel({ items }) {
 
 export function Home() {
   const [d, setD] = useState(null);
-  useEffect(() => { api('/home').then(setD).catch(() => setD({})); }, []);
+  const [err, setErr] = useState('');
+  useEffect(() => { api('/home').then(setD).catch((e) => setErr(e.message)); }, []);
+  if (err) return <div className="section"><h2>Cannot reach the server</h2><p className="muted">Start MongoDB, then restart this website window.</p><button className="cta-btn sm" onClick={() => window.location.reload()}>Retry</button></div>;
   if (!d) return <p className="muted">Loading…</p>;
   const seen = new Set();
   const hero = [...(d.featured || []), ...(d.deals || []), ...(d.fresh || [])].filter((g) => {
