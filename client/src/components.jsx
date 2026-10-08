@@ -7,7 +7,7 @@ const IcoMoon = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="non
 const IcoSliders = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2.2" /><circle cx="10" cy="17" r="2.2" /></svg>);
 const IcoTag = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h7l9 9-7 7-9-9z" /><circle cx="9" cy="9" r="1.6" /></svg>);
 
-function Sidebar({ me, onLogout, theme, onTheme }) {
+function Sidebar({ me, onLogout, theme, onTheme, onHide }) {
   const nav = useNavigate();
   const [mature, setMature] = useState(null);
   useEffect(() => {
@@ -21,6 +21,7 @@ function Sidebar({ me, onLogout, theme, onTheme }) {
   };
   return (
     <aside className="side-rail" aria-label="Settings and account">
+      <button className="ghost-btn sm" onClick={onHide}>Hide panel</button>
       <div className="rail-card">
         {me ? (
           <>
@@ -80,7 +81,9 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
   }, [loc.pathname]);
   const linkCls = (to) => (loc.pathname === to ? 'active' : '');
   const [menu, setMenu] = useState(false);
+  const [hideSide, setHideSide] = useState(() => { try { return localStorage.getItem('pv-side') === 'hide'; } catch { return false; } });
   useEffect(() => { setMenu(false); }, [loc.pathname]);
+  useEffect(() => { try { localStorage.setItem('pv-side', hideSide ? 'hide' : 'show'); } catch {} }, [hideSide]);
   return (
     <>
       <header className="topbar">
@@ -111,9 +114,10 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
           </div>
         </div>
       </header>
-      <div className={'shell' + (menu ? ' menu-open' : '')}>
+      <div className={'shell' + (menu ? ' menu-open' : '') + (hideSide ? ' no-side' : '')}>
         {menu && <div className="scrim" onClick={() => setMenu(false)} />}
-        <Sidebar me={me} onLogout={onLogout} theme={theme} onTheme={onTheme} />
+        {hideSide && <button className="side-tab" onClick={() => setHideSide(false)}>PANEL</button>}
+        {!hideSide && <Sidebar me={me} onLogout={onLogout} theme={theme} onTheme={onTheme} onHide={() => setHideSide(true)} />}
         <div className="shell-main">
           <div className="store_nav"><div className="store_nav_inner">
         <div className="drop"><button>Your Store</button><div className="drop_menu">

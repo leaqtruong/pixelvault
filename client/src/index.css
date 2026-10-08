@@ -89,6 +89,17 @@ img{background:#0d0b09}
 .shell-main{min-width:0}
 .shell-main .store_nav{max-width:none;margin:0 0 22px}
 .shell-main .wrap{max-width:none;margin:0;padding:0 0 48px}
+.shell.no-side{grid-template-columns:minmax(0,1fr)}
+.shell.no-side .side-rail{display:none}
+.side-tab{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:60;background:var(--card);border:1px solid var(--line);border-left:0;color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.1em;padding:12px 7px;cursor:pointer;writing-mode:vertical-rl;font-family:inherit}
+.side-tab:hover{background:#f5a5241c}
+
+/* square everything — no round frames */
+.action-btn,.icon-btn,.avatar-chip,.cart-badge,.carousel_arrow,.track span,.glyph,.drop_menu,.avatar,.shot_strip img,input,select,textarea,.cta-btn,.ghost-btn,.install-btn,.tag,.devresp,.store_search input,.store_search button,.menu-btn,.side-tab{border-radius:2px !important}
+
+/* hide the store-nav scrollbar (scroll still works via wheel/touch) */
+.store_nav_inner{scrollbar-width:none;-ms-overflow-style:none}
+.store_nav_inner::-webkit-scrollbar{display:none}
 .side-rail{position:sticky;top:82px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .rail-card{background:var(--card);border:1px solid var(--line);border-top:3px solid var(--accent);padding:14px}
 .rail-card h3{margin-top:0}
