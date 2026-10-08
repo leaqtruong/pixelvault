@@ -52,6 +52,11 @@ function Rail({ me, theme, onTheme }) {
 export function Layout({ me, onLogout, theme, onTheme, children }) {
   const nav = useNavigate();
   const loc = useLocation();
+  const [cartN, setCartN] = useState(0);
+  useEffect(() => {
+    api('/cart').then((d) => setCartN((d.items || []).reduce((s, i) => s + i.qty, 0))).catch(() => {});
+  }, [loc.pathname]);
+  const linkCls = (to) => (loc.pathname === to ? 'active' : '');
   return (
     <>
       <Rail me={me} theme={theme} onTheme={onTheme} />
@@ -59,24 +64,23 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
         <div className="topbar_inner">
           <Link className="logo" to="/">PIXEL<span>VAULT</span></Link>
           <nav>
-            <Link to="/games">Store</Link>
-            <Link to="/toys">Toys</Link>
-            <Link to="/community">Community</Link>
-            <Link to="/mods">Mods</Link>
-            <Link to="/dev">Dev Portal</Link>
+            <Link className={linkCls('/games')} to="/games">Store</Link>
+            <Link className={linkCls('/toys')} to="/toys">Toys</Link>
+            <Link className={linkCls('/community')} to="/community">Community</Link>
+            <Link className={linkCls('/mods')} to="/mods">Mods</Link>
+            <Link className={linkCls('/dev')} to="/dev">Dev Portal</Link>
           </nav>
           <div className="top-actions">
-            <Link to="/cart">Cart</Link>
-            <button className="ghost-btn sm" title="Toggle light / dark" onClick={onTheme} style={{ display: 'inline-flex', alignItems: 'center' }}>{theme === 'light' ? <IcoMoon /> : <IcoSun />}<span style={{ marginLeft: 6 }}>{theme === 'light' ? 'Dark' : 'Light'}</span></button>
-            <Link to="/settings">Settings</Link>
+            <Link className="action-btn" to="/cart">Cart{cartN > 0 && <span className="cart-badge">{cartN}</span>}</Link>
+            <button className="icon-btn" title={theme === 'light' ? 'Switch to dark' : 'Switch to light'} onClick={onTheme}>{theme === 'light' ? <IcoMoon /> : <IcoSun />}</button>
             {me ? (
               <>
-                <Link to={`/users/${me.username}`}>{me.username}</Link>
+                <Link className="avatar-chip" to={`/users/${me.username}`}>{(me.username || '?')[0].toUpperCase()}</Link>
                 <button className="ghost-btn sm" onClick={async () => { await api('/auth/logout', { method: 'POST' }); onLogout(); nav('/'); }}>Logout</button>
               </>
             ) : (
               <>
-                <Link className="ghost-btn sm" to="/login">login</Link>
+                <Link className="ghost-btn sm" to="/login">Login</Link>
                 <Link className="install-btn" to="/register">Join free</Link>
               </>
             )}

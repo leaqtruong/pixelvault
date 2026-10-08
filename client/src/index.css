@@ -49,20 +49,29 @@ img{background:#0d0b09}
 /* ---------- header ---------- */
 .topbar{background:rgba(15,12,10,.8);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(245,165,36,.22);position:sticky;top:0;z-index:50}
 [data-theme="light"] .topbar{background:rgba(250,246,236,.88)}
-.topbar_inner{max-width:1080px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:28px}
-.logo{font-family:var(--font-display);font-size:34px;letter-spacing:.06em;color:var(--bright);white-space:nowrap;line-height:1}
+.topbar_inner{max-width:1080px;margin:0 auto;padding:0 24px;height:68px;display:flex;align-items:center;gap:30px}
+.logo{font-family:var(--font-display);font-size:37px;letter-spacing:.05em;color:var(--bright);white-space:nowrap;line-height:1;text-shadow:0 2px 18px #f5a52433}
 .logo span{background:linear-gradient(100deg,var(--accent),var(--ember));-webkit-background-clip:text;background-clip:text;color:transparent}
-.topbar nav{display:flex;gap:4px}
-.topbar nav a{color:var(--dim);font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:9px 13px;border-radius:9px}
-.topbar nav a:hover{color:var(--bright);background:#f5a52414}
-.top-actions{margin-left:auto;display:flex;gap:8px;align-items:center;font-size:13px;white-space:nowrap}
-.install-btn{background:linear-gradient(100deg,var(--ember),var(--accent));color:#fff;border-radius:10px;padding:8px 16px;font-size:12.5px;font-weight:700}
+.topbar nav{display:flex;gap:2px;height:68px;align-items:stretch}
+.topbar nav a{position:relative;display:flex;align-items:center;color:var(--dim);font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;padding:0 14px}
+.topbar nav a:hover{color:var(--bright)}
+.topbar nav a.active{color:var(--accent)}
+.topbar nav a.active::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:3px;border-radius:3px 3px 0 0;background:linear-gradient(90deg,var(--ember),var(--accent))}
+.top-actions{margin-left:auto;display:flex;gap:10px;align-items:center;white-space:nowrap}
+.action-btn{position:relative;display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-size:13px;font-weight:600;border:1px solid #4d403033;border-radius:99px;padding:8px 16px;transition:border-color .15s}
+.action-btn:hover{border-color:var(--accent);color:var(--accent)}
+.cart-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:99px;background:linear-gradient(100deg,var(--ember),var(--accent));color:#fff;font-size:11px;font-weight:800;padding:0 6px}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;border:1px solid #4d403033;background:transparent;color:var(--dim);cursor:pointer;transition:border-color .15s,color .15s}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent)}
+.avatar-chip{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--ember));color:#fff;font-weight:800;font-size:16px}
+.avatar-chip:hover{color:#fff;filter:brightness(1.1)}
+.install-btn{background:linear-gradient(100deg,var(--ember),var(--accent));color:#fff;border-radius:99px;padding:9px 20px;font-size:13px;font-weight:700;box-shadow:0 4px 18px #e5484d44}
 .install-btn:hover{filter:brightness(1.1);color:#fff}
 
 /* ---------- store nav ---------- */
 .store_nav{max-width:1080px;margin:0 auto;padding:0 24px}
-.store_nav_inner{display:flex;align-items:center;gap:2px;background:var(--card);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(245,165,36,.2);border-radius:var(--radius);margin:16px 0 26px;padding:6px 8px;flex-wrap:wrap}
-.store_nav_inner>a,.drop>button{color:var(--ink);font-size:12.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:10px 14px;background:none;border:0;border-radius:9px;cursor:pointer;font-family:inherit}
+.store_nav_inner{display:flex;align-items:center;gap:2px;background:var(--card);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(245,165,36,.2);border-radius:16px;margin:16px 0 26px;padding:8px 10px;overflow-x:auto}
+.store_nav_inner>a,.drop>button{color:var(--ink);font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:10px 14px;background:none;border:0;border-radius:10px;cursor:pointer;font-family:inherit;white-space:nowrap}
 .store_nav_inner>a:hover,.drop>button:hover{background:#f5a5241c;color:var(--accent)}
 .drop{position:relative}
 .drop_menu{display:none;position:absolute;top:calc(100% + 8px);left:0;min-width:220px;background:rgba(26,20,13,.97);backdrop-filter:blur(16px);border:1px solid rgba(245,165,36,.28);border-radius:12px;z-index:60;padding:6px;box-shadow:0 18px 44px rgba(0,0,0,.5)}
@@ -226,7 +235,8 @@ a.tag:hover{background:#f5a5242c;color:var(--accent)}
   .card-row{grid-template-columns:repeat(2,1fr)}
   .card-grid{grid-template-columns:1fr 1fr}
   .cat_tiles{grid-template-columns:repeat(2,1fr)}
-  .topbar_inner{flex-wrap:wrap;gap:12px}
+  .topbar_inner{flex-wrap:wrap;height:auto;padding-top:10px;padding-bottom:10px;gap:12px}
+  .topbar nav{height:auto}
   .store_search input{width:130px}
   .cart-row{grid-template-columns:80px 1fr auto}
   .sys_cols{grid-template-columns:1fr}
