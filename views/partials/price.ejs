@@ -1,8 +1,0 @@
-<% /* Shared Steam-style price block. Expects `g`. */ %>
-<% if ((g.price || 0) <= 0) { %>
-  <div class="price_row"><span class="free_tag">Free To Play</span></div>
-<% } else if (g.discountPct > 0) { %>
-  <div class="price_row"><div class="discount_block"><div class="discount_pct">-<%= g.discountPct %>%</div><div class="discount_prices"><div class="discount_original_price">$<%= g.price.toFixed(2) %></div><div class="discount_final_price">$<%= (g.price*(1-g.discountPct/100)).toFixed(2) %></div></div></div></div>
-<% } else { %>
-  <div class="price_row"><span class="plain_price">$<%= g.price.toFixed(2) %></span></div>
-<% } %>

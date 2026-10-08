@@ -1,20 +1,20 @@
 {
   "name": "pixelvault-game-store",
   "version": "1.0.0",
-  "description": "PixelVault — Steam-like online game store with digital + physical sales, dev portal, mods, community. Node.js + Express + MongoDB.",
+  "description": "PixelVault — game store with digital key vault + toy collectibles. React SPA + Node.js + Express + MongoDB.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "seed": "node seed/seed.js"
+    "seed": "node seed/seed.js",
+    "client": "npm run dev --prefix client",
+    "build:client": "npm run build --prefix client"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
-    "ejs": "^3.1.10",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
-    "method-override": "^3.0.0",
     "mongoose": "^8.5.0"
   }
 }

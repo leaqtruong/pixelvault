@@ -1,5 +1,0 @@
-<%- include('partials/header') %>
-<h1>For you</h1><p class="muted">Because you played: <b><%= topGenres.join(', ')||'everything' %></b></p>
-<div class="card-grid"><% recs.forEach(g=>{ %><a class="gcard" href="/games/<%= g.slug %>"><img src="<%= g.coverImage %>"><div class="gmeta"><b><%= g.title %></b><span class="genres"><%= (g.genres||[]).join(' · ') %></span><span class="price"><b>$<%= (g.price*(1-(g.discountPct||0)/100)).toFixed(2) %></b></span></div></a><% }) %></div>
-<% if(!recs.length){ %><p class="muted">Play more games and the vault oracle will learn your taste.</p><% } %>
-<%- include('partials/footer') %>

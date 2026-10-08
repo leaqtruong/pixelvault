@@ -1,7 +1,0 @@
-<%- include('partials/header') %>
-<p><a href="/community">← boards</a></p>
-<h1># <%= board %> <a class="cta-btn" href="/community/new">+ New thread</a></h1>
-<form class="filters" method="GET"><input name="q" placeholder="Search threads…" value="<%= query.q||'' %>"><button class="ghost-btn">Search</button></form>
-<% posts.forEach(p=>{ %><a class="thread" href="/community/p/<%= p._id %>"><b><%= p.pinned?'[PINNED] ':'' %><%= p.title %></b><span>@<%= p.author?.username %> <%= p.game?('· '+p.game.title):'' %> · <%= p.replies?.length||0 %> replies · Views: <%= p.views %></span></a><% }) %>
-<% if(!posts.length){ %><p class="muted">Silent… too silent. Start the first thread.</p><% } %>
-<%- include('partials/footer') %>

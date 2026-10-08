@@ -1,7 +1,0 @@
-<%- include('partials/header') %>
-<h1>Orders</h1>
-<% orders.forEach(o=>{ %>
-<a class="thread" href="/orders/<%= o._id %>"><b>#<%= String(o._id).slice(-6) %> — $<%= o.grandTotal.toFixed(2) %> · <%= o.status %></b><span><%= new Date(o.createdAt).toLocaleString() %> · <%= o.items.length %> items <%= o.shipment?('· '+o.shipment.tracking+' ('+o.shipment.status+')'):'' %></span></a>
-<% }) %>
-<% if(!orders.length){ %><p class="muted">No orders yet.</p><% } %>
-<%- include('partials/footer') %>

@@ -1,6 +1,0 @@
-<%- include('partials/header') %>
-<div class="auth-box panel"><h1>Become a developer</h1>
-<% if(error){ %><p class="err"><%= error %></p><% } %>
-<p class="muted">70% revenue cut · daily payouts over $10 · physical fulfilment handled by VaultPost warehouses.</p>
-<form action="/dev/apply" method="POST"><input name="studioName" placeholder="Studio name" required><input name="website" placeholder="https://yourstudio.gg"><input name="payoutEmail" type="email" placeholder="payout email" required><button class="cta-btn big">Activate dev account</button></form></div>
-<%- include('partials/footer') %>

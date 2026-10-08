@@ -1,26 +1,18 @@
-# ◈ PixelVault — Steam-like Game Store
+# ◈ PixelVault — Game Store (React + Express + MongoDB)
 
-Node.js + Express + EJS + MongoDB. Digital key delivery (AES-256-GCM) + physical sales, dev portal with revenue, mod hub, community forums, library with playtime + keys, reviews, wishlist, shipping tracking.
+ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + toy collectibles, dev portal with revenue, mod hub, community forums, library with playtime + keys, reviews, wishlist, shipping tracking.
 
 Steam taxonomy: genres / tags / platforms / specials mirror `store.steampowered.com/search` facets — see `lib/steamTaxonomy.js`.
 
-## Routes (16 groups, 40+ endpoints)
+## Layout
 
-| Mount | What |
+| Path | What |
 |---|---|
-| `GET /` | Landing: featured, deals, fresh, tavern chatter |
-| `/auth` | register, login, logout (session + bcrypt) |
-| `/games` | Steam-style store: q, genre, tag, platform, feature, sort, maxPrice, onSale, moddable + pager, detail + `keysAvailable`, wishlist |
-| `/toys` | Separate merch storefront (own collection): q, category, brand, sort + pager, detail + related game, wishlist |
-| `/cart` | add / qty / remove, mixed digital games + boxed games + toys (`kind` split) |
-| `/checkout` + `/orders` | quote, atomic place order (GameKey.claimOne + physical stock guard), tax+shipping math, tracking `PV-XXX`, advance scan, order detail shows decrypted demo keys |
-| `/library` | owned games, play +30min, achievements, delivered keys grouped by game, `/recommendations` by genre |
-| `/dev` | apply, dashboard (gross, 70% cut, monthly, by-country, chart.js), new/edit game, payout, `/:id/keys` vault (counts, CSV import, demo generate) |
-| `/mods` | browse, upload, download counter, endorse, comments |
-| `/community` | boards, per-game threads, new post, replies, likes |
-| `/reviews` | own-to-review, helpful votes, dev response |
-| `/users/:username` | profile, bio, library preview, orders |
-| `GET /api/stats` | JSON health for widgets |
+| `client/` | ReactJS SPA (Vite). `npm run dev --prefix client` for hot-reload (proxies `/api` to :3000), `npm run build --prefix client` for production |
+| `server.js` | Express: serves `/api/*` JSON + `client/dist` static with SPA fallback |
+| `routes/api.js` | All JSON endpoints (auth, games, toys, cart, checkout, orders, library, dev, reviews, users, community, mods) |
+| `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Mod`, `Post`, `Review` |
+| `seed/` | `import-steam.js` (47 real games), `seed-toys.js` (12 merch), test helpers |
 
 ## Run
 
@@ -28,9 +20,40 @@ Steam taxonomy: genres / tags / platforms / specials mirror `store.steampowered.
 cd pixelvault
 copy .env.example .env   # set MONGO_URI + KEY_ENCRYPTION_SECRET
 npm install
+npm install --prefix client
 node seed/import-steam.js  # 47 real games from local Steam manifests + Store API, ~390 DEMO keys
 node seed/seed-toys.js     # 12 official merch listings into standalone `toys` collection — safe to re-run
-# or: npm run seed         # fallback: 100 fictional demo games
+npm run build --prefix client  # build React frontend
+npm run dev            # http://localhost:3000 (or double-click start-website.bat)
+```
+
+## Routes (`/api/*` JSON, session-authenticated)
+
+| Mount | What |
+|---|---|
+| `/api/home` | featured, deals, fresh, toys, category tiles, threads |
+| `/api/auth` | register, login, logout, me (session + bcrypt) |
+| `/api/games` | Steam-style store: q, genre, tag, platform, feature, sort, maxPrice, onSale, moddable + pager, detail + `keysAvailable`, wishlist |
+| `/api/toys` | Separate merch storefront (own collection): q, category, brand, sort + pager, detail + related game, wishlist |
+| `/api/cart` | add / qty / remove, mixed digital games + boxed games + toys (`kind` split) |
+| `/api/checkout` + `/api/orders` | quote, atomic place order (GameKey.claimOne + stock guards), tax+shipping math, tracking `PV-XXX`, advance scan, order detail shows decrypted demo keys |
+| `/api/library` | owned games, play +30min, achievements, delivered keys grouped by game, toy library + wishlists, `/api/recommendations` by genre |
+| `/api/dev` | apply, dashboard (gross, 70% cut, monthly, by-country), new game, payout, `/:id/keys` vault (counts, CSV import, demo generate), toy restock |
+| `/api/mods` | browse, detail |
+| `/api/community` | boards, post detail, new post, replies |
+| `/api/reviews` | own-to-review, helpful votes, dev response |
+| `/api/users/:username` | profile, library preview, own orders |
+
+## Run
+
+```powershell
+cd pixelvault
+copy .env.example .env   # set MONGO_URI + KEY_ENCRYPTION_SECRET
+npm install
+npm install --prefix client
+node seed/import-steam.js  # 47 real games from local Steam manifests + Store API, ~390 DEMO keys
+node seed/seed-toys.js     # 12 official merch listings into standalone `toys` collection — safe to re-run
+npm run build --prefix client  # build React frontend
 npm run dev            # http://localhost:3000
 ```
 
@@ -53,4 +76,4 @@ Demo keys are fake `DEMO-XXXXX-XXXXX-XXXXX` placeholders encrypted with AES-256-
 
 ## MongoDB collections
 
-`users` (library entries, wishlist, addresses, playHistory), `games` (genres/tags/platforms/features Steam-style + digital + physical subdoc, stats.keysAvailable), `gamekeys` (codeEnc AES-256-GCM, codeHash unique, status, order, user), `orders` (items.keyIds, shipment, devPayouts), `mods`, `posts` (replies embedded), `reviews`.
+`users` (game library + toyLibrary, wishlists, addresses, playHistory), `games` (genres/tags/platforms/features Steam-style + digital + physical subdoc, stats.keysAvailable), `toys` (standalone merch: brand, category, price, stock), `gamekeys` (codeEnc AES-256-GCM, codeHash unique, status, order, user), `orders` (items.kind game/toy, keyIds, shipment, devPayouts), `mods`, `posts` (replies embedded), `reviews`.
