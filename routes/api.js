@@ -12,6 +12,28 @@ const { decryptKey } = require('../lib/keyCrypto');
 
 const router = express.Router();
 
+// ---------- deployed build stamp ----------
+// The SPA polls this. If the bundle on disk is newer than what the tab is
+// running, the client reloads itself — no more staring at a stale build.
+const fs = require('fs');
+const path = require('path');
+const DIST = path.join(__dirname, '..', 'client', 'dist', 'assets');
+let stampCache = { at: 0, value: null };
+function deployedBuild() {
+  if (Date.now() - stampCache.at < 30000) return stampCache.value;
+  let v = null;
+  try {
+    const js = fs.readdirSync(DIST).find((f) => /^index-.*\.js$/.test(f));
+    if (js) v = (fs.readFileSync(path.join(DIST, js), 'utf8').match(/20\d{6}-\d{2}/) || [])[0] || null;
+  } catch {}
+  stampCache = { at: Date.now(), value: v };
+  return v;
+}
+router.get('/version', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ build: deployedBuild() });
+});
+
 const needLogin = (req, res, next) => {
   if (!req.session.user) return res.status(401).json({ error: 'Login required' });
   next();

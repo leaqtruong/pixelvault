@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { api } from './api.js';
 import { Layout, ToastHost } from './components.jsx';
+import { BUILD } from './version.js';
 import { Home, Store, GameDetail, Toys, ToyDetail } from './pages-shop.jsx';
 import { Cart, Checkout, Orders, OrderDetail, Library, Recommendations } from './pages-trade.jsx';
 import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevSales, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings } from './pages-user.jsx';
@@ -15,6 +16,26 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem('pv-theme', theme); } catch {}
   }, [theme]);
+
+  // Self-healing build check: if the bundle on disk moved on, take the tab with it.
+  useEffect(() => {
+    let tries = 0;
+    const check = () => {
+      fetch('/api/version', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d && d.build && d.build !== BUILD) {
+            try { sessionStorage.setItem('pv-reloaded', d.build); } catch {}
+            window.location.reload();
+          }
+        })
+        .catch(() => {});
+    };
+    const t = setInterval(() => { if (++tries % 2 === 0) check(); }, 20000);
+    check();
+    return () => clearInterval(t);
+  }, []);
+
   if (!ready) return <p className="muted" style={{ padding: 40 }}>Loading PixelVault…</p>;
   return (
     <BrowserRouter>
