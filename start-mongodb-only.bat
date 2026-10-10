@@ -1,9 +1,11 @@
 @echo off
 setlocal EnableDelayedExpansion
 title PixelVault MongoDB
-rem Starts only MongoDB, without the website. Safe to run at Windows sign-in.
-rem If something already listens on 27017 this exits immediately, so running
-rem it twice never creates a second mongod.
+rem Starts only MongoDB, without the website. Safe to run at any time.
+rem On this machine the "PixelVault MongoDB" Windows service already provides
+rem MongoDB, so this script normally exits straight away — it is the fallback
+rem for machines where the service is not installed. Because it bails out when
+rem port 27017 is already taken, running it twice never creates a second mongod.
 
 netstat -ano | findstr LISTENING | findstr ":27017 " >nul
 if not errorlevel 1 exit /b 0

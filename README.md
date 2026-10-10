@@ -58,21 +58,30 @@ Checks Node, frees port 3000, locates and starts MongoDB, installs packages, ver
 
 ### MongoDB without the launcher
 
-`start-mongodb-only.bat` starts just the database — it exits immediately when port 27017 is already taken, so it is safe to run twice and never spawns a second `mongod`. It writes its output to `.mongo-logs/mongod.log` instead of holding a console window open.
-
-For automatic startup at sign-in, drop this line into your Startup folder (`Win+R` → `shell:startup`):
-
-```bat
-@echo off
-call "E:\pixelvault\start-mongodb-only.bat"
-```
-
-Registering a real Windows service needs an elevated shell, and it survives sign-out rather than only sign-in:
+**A Windows service named `PixelVault MongoDB` is registered on this machine** (`Running`, start type `Automatic`, dbpath `E:\MongolDB\data\db`). MongoDB therefore starts with Windows, before anyone signs in, and `start-website.bat` simply finds port 27017 already answering and moves on. Manage it from an elevated shell:
 
 ```powershell
-# run PowerShell as Administrator
-& "E:\MongolDB\mongodb-win32-x86_64-windows-8.3.8\bin\mongod.exe" --install `
-  --serviceName "PixelVault MongoDB" --dbpath "E:\MongolDB\data\db"
+Get-Service "PixelVault MongoDB"
+Start-Service "PixelVault MongoDB"
+Stop-Service  "PixelVault MongoDB"
+```
+
+Server output goes to `E:\MongolDB\data\mongod-service.log`. `mongod --install` refuses to run without `--logpath`, so any reinstall needs it.
+
+To uninstall:
+
+```powershell
+Stop-Service "PixelVault MongoDB"
+& "E:\MongolDB\mongodb-win32-x86_64-windows-8.3.8\bin\mongod.exe" --remove --serviceName "PixelVault MongoDB"
+```
+
+On a machine without the service, `start-website.bat` starts MongoDB itself. `start-mongodb-only.bat` is the standalone fallback — it exits immediately when port 27017 is already taken, so it is safe to run twice and never spawns a second `mongod`. It writes to `.mongo-logs/mongod.log` rather than holding a console window open.
+
+To register the service on a different machine, from an elevated PowerShell:
+
+```powershell
+& "<path to>\mongod.exe" --install --serviceName "PixelVault MongoDB" `
+  --dbpath "<path to>\data\db" --logpath "<path to>\data\mongod-service.log"
 Start-Service "PixelVault MongoDB"
 ```
 
