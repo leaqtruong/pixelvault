@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from './api.js';
-import { GameCard, ToyCard, Price, Pager } from './components.jsx';
+import { GameCard, ToyCard, Price, Pager, useToast } from './components.jsx';
 
 function Carousel({ items }) {
   const [idx, setIdx] = useState(0);
@@ -122,9 +122,21 @@ export function Store() {
           </div>
         </aside>
         <div>
-          <p className="tiny">{d.total} results</p>
+          <div className="chips">
+            <Link className={'chip' + (!q.genre ? ' on' : '')} to="/games">All</Link>
+            {(d.genres || []).slice(0, 8).map((g) => (
+              <Link key={g} className={'chip' + (q.genre === g ? ' on' : '')} to={`/games?genre=${encodeURIComponent(g)}`}>{g}</Link>
+            ))}
+            {q.q && <Link className="chip on" to="/games">Clear search</Link>}
+          </div>
+          <p className="tiny">{d.total} results{q.q ? ` for "${q.q}"` : ''}</p>
           <div className="card-grid">{(d.games || []).map((g, ix) => <GameCard key={g._id} g={g} i={ix} />)}</div>
-          {!(d.games || []).length && <div className="section"><p className="muted">No titles match. <Link to="/games">Clear search</Link></p></div>}
+          {!(d.games || []).length && (
+            <div className="empty"><h3>Nothing on the shelf</h3>
+              <p>No titles match {q.q ? `"${q.q}" ` : ''}{q.genre ? `in ${q.genre} ` : ''}right now.</p>
+              <Link className="cta-btn" to="/games">Reset filters</Link>
+            </div>
+          )}
           <Pager total={d.total} totalPages={d.totalPages} page={d.page} base="/games" query={q} />
         </div>
       </div>
@@ -137,7 +149,9 @@ export function GameDetail({ me }) {
   const [d, setD] = useState(null);
   const [live, setLive] = useState(null);
   const [news, setNews] = useState([]);
+  const [rel, setRel] = useState([]);
   const [err, setErr] = useState('');
+  const toast = useToast();
   useEffect(() => { api('/games/' + slug).then(setD).catch((e) => setErr(e.message)); }, [slug]);
   useEffect(() => {
     if (d?.game?.steamAppId) {
@@ -145,17 +159,24 @@ export function GameDetail({ me }) {
       api('/news/' + d.game.steamAppId).then((n) => setNews(n.news || [])).catch(() => {});
     }
   }, [d]);
+  // Related: same genre, excluding this title. Cheap client-side query.
+  useEffect(() => {
+    if (!d?.game) return;
+    const g = d.game.genres && d.game.genres[0];
+    if (!g) { setRel([]); return; }
+    api(`/games?genre=${encodeURIComponent(g)}&limit=5`).then((r) => setRel((r.games || []).filter((x) => x._id !== d.game._id).slice(0, 4))).catch(() => {});
+  }, [d?.game?._id]);
   const nav = useNavigate();
   if (err) return <p className="err">{err}</p>;
   if (!d) return <p className="muted">Loading…</p>;
   const { game, reviews, mods, threads, keysAvailable } = d;
   const outOfKeys = (game.price || 0) > 0 && (keysAvailable || 0) === 0;
   const add = async (edition) => {
-    try { await api('/cart/add', { method: 'POST', body: { gameId: game._id, edition } }); nav('/cart'); }
-    catch (e) { setErr(e.message); }
+    try { await api('/cart/add', { method: 'POST', body: { gameId: game._id, edition } }); toast('Added to cart'); nav('/cart'); }
+    catch (e) { setErr(e.message); toast(e.message, 'err'); }
   };
   const wish = async () => {
-    try { await api(`/games/${game._id}/wishlist`, { method: 'POST' }); } catch (e) { setErr(e.message); }
+    try { await api(`/games/${game._id}/wishlist`, { method: 'POST' }); toast('Wishlist updated'); } catch (e) { setErr(e.message); }
   };
   const review = async (e) => {
     e.preventDefault();
@@ -188,6 +209,18 @@ export function GameDetail({ me }) {
                 {r.devResponse?.text && <p className="tiny"><b>Developer response:</b> {r.devResponse.text}</p>}</div></div>)}
             {!reviews.length && <p className="muted">No reviews yet.</p>}
           </div>
+          {!!rel.length && (
+            <div className="section"><h3>More like this</h3>
+              <div className="related">
+                {rel.map((r) => (
+                  <Link key={r._id} to={`/games/${r.slug}`}>
+                    <b>{r.title}</b>
+                    <span>${priceOf(r).toFixed(2)} · {(r.genres || []).slice(0, 1).join('')}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <aside className="game_info">
           <img className="header_img" src={game.coverImage} />
@@ -237,7 +270,12 @@ export function Toys() {
         <div>
           <p className="tiny">{d.total} results</p>
           <div className="card-grid">{(d.toys || []).map((t, ix) => <ToyCard key={t._id} t={t} i={ix} />)}</div>
-          {!(d.toys || []).length && <div className="section"><p className="muted">Nothing here. <Link to="/toys">Clear</Link></p></div>}
+          {!(d.toys || []).length && (
+            <div className="empty"><h3>The toy shelf is bare</h3>
+              <p>No collectibles match {q.category ? `category "${q.category}" ` : ''}right now.</p>
+              <Link className="cta-btn" to="/toys">Browse everything</Link>
+            </div>
+          )}
           <Pager total={d.total} totalPages={d.totalPages} page={d.page} base="/toys" query={q} />
         </div>
       </div>

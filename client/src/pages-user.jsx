@@ -137,36 +137,79 @@ export function DevApply() {
 export function Dev() {
   const [d, setD] = useState(null);
   const [editing, setEditing] = useState(null);
+  const toast = useToast();
   const load = () => api('/dev').then(setD).catch(() => setD({ err: 1 }));
   useEffect(load, []);
-  const payout = async () => { try { await api('/dev/payout', { method: 'POST' }); setD(await api('/dev')); } catch (e) { alert(e.message); } };
+  const payout = async () => {
+    try { await api('/dev/payout', { method: 'POST' }); setD(await api('/dev')); toast('Payout requested — balance cleared'); }
+    catch (e) { toast(e.message, 'err'); }
+  };
   const saveEdit = async (e, g) => {
     e.preventDefault();
     const f = new FormData(e.target);
     try {
       await api(`/dev/${g._id}/edit`, { method: 'POST', body: { price: f.get('price'), discountPct: f.get('discountPct'), status: f.get('status'), physicalStock: f.get('physicalStock') } });
-      setEditing(null); load();
-    } catch (er) { alert(er.message); }
+      setEditing(null); load(); toast('Saved ' + g.title);
+    } catch (er) { toast(er.message, 'err'); }
   };
   if (!d) return <p className="muted">Loading…</p>;
   if (d.err) return <p className="muted">Developer account required. <Link to="/dev/apply">Become a developer</Link></p>;
-  return (<><h1>Dev console <Link className="cta-btn sm" to="/dev/new">+ Publish game</Link> <Link className="ghost-btn sm" to="/dev/toys">Toy shelf</Link></h1>
+  const lowKeys = d.games.filter((g) => g.price > 0 && (g.stats.keysAvailable || 0) === 0);
+  const lowBox = d.games.filter((g) => g.physical?.enabled && (g.physical?.stock || 0) < 5);
+  const canPayout = d.balance >= 10;
+  return (<>
+    <h1>Dev console
+      <Link className="cta-btn sm" to="/dev/new">+ Publish game</Link>
+      <Link className="ghost-btn sm" to="/dev/toys">Toy shelf</Link>
+      <Link className="ghost-btn sm" to="/dev/sales">Sales report</Link>
+    </h1>
+    <div className="alert-bar">
+      {d.balance < 10 && <div className="alert-info">Payout unlocks at <b>$10.00</b> — you have <b>${d.balance.toFixed(2)}</b>.</div>}
+      {!!lowKeys.length && <div className="alert-warn"><b>{lowKeys.length} title{lowKeys.length > 1 ? 's' : ''} out of keys.</b> Players can't buy until you restock. <Link to={`/dev/keys/${lowKeys[0]._id}`}>Restock now</Link></div>}
+      {!!lowBox.length && <div className="alert-warn"><b>{lowBox.length} box edition{lowBox.length > 1 ? 's' : ''} low on stock</b> — under 5 units left.</div>}
+    </div>
     <div className="kpi-row">
       <div className="kpi"><span>Gross sales</span><b>${d.gross.toFixed(2)}</b></div>
       <div className="kpi"><span>Your cut (70%)</span><b>${d.devCut.toFixed(2)}</b></div>
       <div className="kpi"><span>Digital units</span><b>{d.unitsD}</b></div>
-      <div className="kpi"><span>Owed now</span><b>${d.balance.toFixed(2)}</b><button className="ghost-btn sm" onClick={payout}>Request payout</button></div>
+      <div className="kpi"><span>Physical units</span><b>{d.unitsP}</b></div>
+      <div className="kpi"><span>Owed now</span><b>${d.balance.toFixed(2)}</b>
+        <button className="ghost-btn sm" onClick={payout} disabled={!canPayout} title={canPayout ? '' : 'Minimum $10'}>Request payout</button>
+      </div>
     </div>
-    <div className="panel"><h3>Your games</h3>{d.games.map((g) => <div key={g._id}>
-      <p><Link to={`/games/${g.slug}`}>{g.title}</Link> — ${g.stats.revenueGross.toFixed(2)} · keys {g.stats.keysAvailable || 0} · {g.status} <Link className="ghost-btn sm" to={`/dev/keys/${g._id}`}>Keys</Link> <button className="ghost-btn sm" onClick={() => setEditing(editing === g._id ? null : g._id)}>Edit</button></p>
-      {editing === g._id && <form className="row" onSubmit={(e) => saveEdit(e, g)}>
-        <input name="price" type="number" step="0.01" defaultValue={g.price} title="Price" />
-        <input name="discountPct" type="number" defaultValue={g.discountPct} title="% off" />
-        <input name="physicalStock" type="number" defaultValue={g.physical?.stock || 0} title="Box stock" />
-        <select name="status" defaultValue={g.status}><option>published</option><option>draft</option><option>delisted</option></select>
-        <button className="cta-btn sm">Save</button>
-      </form>}
-    </div>)}</div>
+    <div className="two-col">
+      <div className="panel"><h3>Revenue by month</h3>
+        <table className="tbl"><tbody>
+          {d.monthly.length ? d.monthly.map(([m, v]) => <tr key={m}><td>{m}</td><td>${Number(v).toFixed(2)}</td></tr>)
+            : <tr><td colSpan="2" className="muted">No paid orders yet this year.</td></tr>}
+        </tbody></table>
+      </div>
+      <div className="panel"><h3>Sales by region</h3>
+        <table className="tbl"><tbody>
+          {Object.keys(d.byCountry || {}).length ? Object.entries(d.byCountry).map(([c, n]) => <tr key={c}><td>{c === 'DIGITAL' ? 'Digital (no address)' : c}</td><td>{n} orders</td></tr>)
+            : <tr><td className="muted">Nothing yet.</td></tr>}
+        </tbody></table>
+      </div>
+    </div>
+    <div className="panel"><h3>Your games ({d.games.length})</h3>
+      {d.games.length ? d.games.map((g) => <div key={g._id}>
+        <p>
+          <Link to={`/games/${g.slug}`}>{g.title}</Link> — ${g.stats.revenueGross.toFixed(2)}
+          {(g.price || 0) > 0 && <span className="tiny"> · {(g.stats.keysAvailable || 0) === 0 ? <b style={{ color: 'var(--ember)' }}>keys out</b> : `keys ${g.stats.keysAvailable}`}</span>}
+          {g.physical?.enabled && <span className="tiny"> · box {g.physical.stock}</span>}
+          {' '}· <span className="tiny">{g.status}</span>
+          <Link className="ghost-btn sm" to={`/dev/keys/${g._id}`}>Keys</Link>
+          <button className="ghost-btn sm" onClick={() => setEditing(editing === g._id ? null : g._id)}>Edit</button>
+        </p>
+        {editing === g._id && <form className="row" onSubmit={(e) => saveEdit(e, g)}>
+          <input name="price" type="number" step="0.01" defaultValue={g.price} title="Price" />
+          <input name="discountPct" type="number" defaultValue={g.discountPct} title="% off" />
+          <input name="physicalStock" type="number" defaultValue={g.physical?.stock || 0} title="Box stock" />
+          <select name="status" defaultValue={g.status}><option>published</option><option>draft</option><option>delisted</option></select>
+          <button className="cta-btn sm">Save</button>
+        </form>}
+      </div>) : <p className="muted">No titles yet — <Link to="/dev/new">publish your first game</Link>.</p>}
+    </div>
   </>);
 }
 
@@ -192,37 +235,149 @@ export function DevKeys() {
   const { id } = useParams();
   const [d, setD] = useState(null);
   const [msg, setMsg] = useState('');
+  const [rows, setRows] = useState([]);
+  const toast = useToast();
   const load = () => api('/dev/' + id + '/keys').then(setD).catch((e) => setMsg(e.message));
   useEffect(load, [id]);
+  useEffect(() => {
+    if (id) api('/dev/' + id + '/keys/list?limit=8').then((r) => setRows(r.keys || [])).catch(() => {});
+  }, [id, d]);
   const imp = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    try { const r = await api(`/dev/${id}/keys/import`, { method: 'POST', body: { keys: f.get('keys'), batchId: f.get('batchId'), platform: 'Steam' } }); setMsg(`Imported ${r.added}`); load(); }
-    catch (er) { setMsg(er.message); }
+    try { const r = await api(`/dev/${id}/keys/import`, { method: 'POST', body: { keys: f.get('keys'), batchId: f.get('batchId'), platform: 'Steam' } }); toast(`Imported ${r.added}`); e.target.reset(); load(); }
+    catch (er) { toast(er.message, 'err'); }
+  };
+  const revoke = async (gid) => {
+    try { await api(`/dev/${id}/keys/${gid}/revoke`, { method: 'POST' }); toast('Key revoked'); load(); }
+    catch (er) { toast(er.message, 'err'); }
   };
   const gen = async () => {
-    try { const r = await api(`/dev/${id}/keys/generate`, { method: 'POST', body: { count: 20 } }); setMsg(`Generated ${r.added}`); load(); }
-    catch (er) { setMsg(er.message); }
+    try { const r = await api(`/dev/${id}/keys/generate`, { method: 'POST', body: { count: 20 } }); toast(`Generated ${r.added} keys`); load(); }
+    catch (er) { toast(er.message, 'err'); }
   };
   if (!d) return <p className="muted">{msg || 'Loading…'}</p>;
-  return (<><h1>Key vault — {d.game.title}</h1>
-    <div className="kpi-row"><div className="kpi"><span>Available</span><b>{d.available}</b></div><div className="kpi"><span>Sold</span><b>{d.sold}</b></div><div className="kpi"><span>Revoked</span><b>{d.revoked}</b></div></div>
-    <div className="two-col"><div className="panel"><h3>Bulk import</h3>
-      <form onSubmit={imp} style={{ display: 'grid', gap: 8 }}><input name="batchId" placeholder="batch id" /><textarea name="keys" placeholder="One key per line" /><button className="cta-btn sm">Import</button></form></div>
-      <div className="panel"><h3>Generate demo</h3><button className="ghost-btn" onClick={gen}>Generate 20 DEMO keys</button></div></div>
-    {msg && <p className="tiny">{msg}</p>}</>);
+  const outOf = d.available === 0;
+  return (<>
+    <h1>Key vault — {d.game.title}</h1>
+    {outOf && <div className="alert-bar"><div className="alert-warn"><b>Out of keys.</b> Nobody can buy the digital edition until you restock.</div></div>}
+    <div className="kpi-row">
+      <div className="kpi"><span>Available</span><b>{d.available}</b></div>
+      <div className="kpi"><span>Sold</span><b>{d.sold}</b></div>
+      <div className="kpi"><span>Revoked</span><b>{d.revoked}</b></div>
+    </div>
+    <div className="two-col">
+      <div className="panel"><h3>Bulk import</h3>
+        <form onSubmit={imp} style={{ display: 'grid', gap: 8 }}>
+          <input name="batchId" placeholder="batch id (e.g. batch-2026-10)" />
+          <textarea name="keys" placeholder="One key per line, or comma separated" style={{ minHeight: 140 }} />
+          <button className="cta-btn sm">Import keys</button>
+        </form>
+        <p className="tiny">Keys are stored AES-256-GCM encrypted; duplicate keys are skipped automatically.</p>
+      </div>
+      <div className="panel"><h3>Generate demo keys</h3>
+        <p className="tiny">Creates fake <code>DEMO-XXXXX-XXXXX-XXXXX</code> placeholders for testing. Not real Steam keys.</p>
+        <button className="ghost-btn" onClick={gen}>Generate 20</button>
+      </div>
+    </div>
+    {!!rows.length && <div className="panel"><h3>Recent keys (masked)</h3>
+      <table className="tbl"><tbody>
+        <tr><th>Key</th><th>Status</th><th>Batch</th><th>Platform</th><th></th></tr>
+        {rows.map((k) => <tr key={k._id}>
+          <td className="tiny"><code>{k.mask}</code></td><td>{k.status}</td><td className="tiny">{k.batchId}</td><td className="tiny">{k.platform}</td>
+          {k.status === 'available' && <td><button className="ghost-btn sm" onClick={() => revoke(k._id)}>Revoke</button></td>}
+        </tr>)}
+      </tbody></table></div>}
+  </>);
 }
 
 export function DevToys() {
   const [d, setD] = useState(null);
+  const [edit, setEdit] = useState(null);
+  const toast = useToast();
   useEffect(() => { api('/dev/toys').then(setD).catch(() => setD({ toys: [] })); }, []);
+  const save = async (id, price, stock) => {
+    try { await api(`/dev/toys/${id}/restock`, { method: 'POST', body: { stock, price } }); setD(await api('/dev/toys')); toast('Saved'); }
+    catch (er) { toast(er.message, 'err'); }
+  };
   if (!d) return <p className="muted">Loading…</p>;
-  const save = async (id, stock) => { await api(`/dev/toys/${id}/restock`, { method: 'POST', body: { stock } }); setD(await api('/dev/toys')); };
-  return (<><h1>Toy shelf</h1><div className="panel"><table className="tbl"><tbody>
-    <tr><th>Collectible</th><th>Price</th><th>Stock</th><th>Sold</th><th></th></tr>
-    {d.toys.map((t) => <tr key={t._id}><td><Link to={`/toys/${t.slug}`}>{t.title}</Link></td><td>${t.price.toFixed(2)}</td><td>{t.stock}</td><td>{t.stats.unitsSold}</td>
-      <td><button className="ghost-btn sm" onClick={() => { const v = prompt('New stock', t.stock); if (v !== null) save(t._id, v); }}>Restock</button></td></tr>)}
-  </tbody></table></div></>);
+  const low = d.toys.filter((t) => (t.stock || 0) <= 3);
+  const totalRev = d.toys.reduce((s, t) => s + (t.stats.revenueGross || 0), 0);
+  const totalUnits = d.toys.reduce((s, t) => s + (t.stats.unitsSold || 0), 0);
+  return (<>
+    <h1>Toy shelf <Link className="ghost-btn sm" to="/dev">← Dev console</Link></h1>
+    {!!low.length && <div className="alert-bar"><div className="alert-warn"><b>{low.length} collectible{low.length > 1 ? 's' : ''} nearly sold out</b> — 3 or fewer left.</div></div>}
+    <div className="kpi-row">
+      <div className="kpi"><span>Listings</span><b>{d.toys.length}</b></div>
+      <div className="kpi"><span>Units sold</span><b>{totalUnits}</b></div>
+      <div className="kpi"><span>Gross revenue</span><b>${totalRev.toFixed(2)}</b></div>
+    </div>
+    <div className="panel"><table className="tbl"><tbody>
+      <tr><th>Collectible</th><th>Price</th><th>Stock</th><th>Sold</th><th>Revenue</th><th></th></tr>
+      {d.toys.map((t) => (
+        <tr key={t._id}>
+          <td><Link to={`/toys/${t.slug}`}>{t.title}</Link><br /><span className="tiny">{t.brand}</span></td>
+          <td>${t.price.toFixed(2)}</td>
+          <td>{t.stock}</td>
+          <td>{t.stats.unitsSold}</td>
+          <td>${(t.stats.revenueGross || 0).toFixed(2)}</td>
+          <td><button className="ghost-btn sm" onClick={() => setEdit(edit === t._id ? null : t._id)}>Edit</button></td>
+        </tr>
+      ))}
+      {edit && <tr><td colSpan="6">
+        <EditToy t={d.toys.find((x) => x._id === edit)} onSave={save} onDone={() => setEdit(null)} />
+      </td></tr>}
+    </tbody></table></div>
+  </>);
+}
+
+function EditToy({ t, onSave, onDone }) {
+  if (!t) return null;
+  return (
+    <form className="row" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.target); onSave(t._id, f.get('price'), f.get('stock')); onDone(); }}>
+      <input name="price" type="number" step="0.01" defaultValue={t.price} title="Price" />
+      <input name="stock" type="number" defaultValue={t.stock} title="Stock" />
+      <button className="cta-btn sm">Save</button>
+      <button type="button" className="ghost-btn sm" onClick={onDone}>Cancel</button>
+    </form>
+  );
+}
+
+export function DevSales() {
+  const [d, setD] = useState(null);
+  useEffect(() => { api('/dev').then(setD).catch(() => setD({ err: 1 })); }, []);
+  if (!d) return <p className="muted">Loading…</p>;
+  if (d.err) return <p className="muted">Developer account required. <Link to="/dev/apply">Become a developer</Link></p>;
+  const download = () => {
+    const lines = ['month,gross_usd', ...d.monthly.map(([m, v]) => `${m},${Number(v).toFixed(2)}`)];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pixelvault-sales.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  return (<>
+    <h1>Sales report <Link className="ghost-btn sm" to="/dev">← Dev console</Link></h1>
+    <div className="stat-row">
+      <div>Gross<b>${d.gross.toFixed(2)}</b></div>
+      <div>You earned (70%)<b>${d.devCut.toFixed(2)}</b></div>
+      <div>Digital units<b>{d.unitsD}</b></div>
+      <div>Physical units<b>{d.unitsP}</b></div>
+      <div>Titles<b>{d.games.length}</b></div>
+    </div>
+    <div className="panel"><h3>Revenue by month</h3>
+      {d.monthly.length ? <table className="tbl"><tbody>
+        {d.monthly.map(([m, v]) => <tr key={m}><td>{m}</td><td>${Number(v).toFixed(2)}</td></tr>)}
+      </tbody></table> : <p className="muted">No paid orders recorded yet.</p>}
+      {!!d.monthly.length && <button className="ghost-btn" style={{ marginTop: 12 }} onClick={download}>Download CSV</button>}
+    </div>
+    <div className="panel"><h3>By region</h3>
+      {Object.keys(d.byCountry || {}).length ? <table className="tbl"><tbody>
+        {Object.entries(d.byCountry).map(([c, n]) => <tr key={c}><td>{c === 'DIGITAL' ? 'Digital only' : c}</td><td>{n} orders</td></tr>)}
+      </tbody></table> : <p className="muted">Nothing yet.</p>}
+    </div>
+  </>);
 }
 
 export function Community() {

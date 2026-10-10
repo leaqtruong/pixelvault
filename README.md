@@ -4,6 +4,8 @@ ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + 
 
 Steam taxonomy: genres / tags / platforms / specials mirror `store.steampowered.com/search` facets — see `lib/steamTaxonomy.js`. Live player counts + community review verdicts come from public Steam Web APIs (`lib/steamLive.js`, 10-min cache).
 
+UI: React SPA with Jersey 25 display font + Inter body, square amber/gallery theme, animated shattering-glass backdrop (subtle), light/dark themes, toast notifications, hero carousel, collapsible left panel.
+
 ## Layout
 
 | Path | What |
@@ -45,9 +47,10 @@ Google login (optional): create an OAuth 2.0 Client ID at `console.cloud.google.
 | `/api/toys` | Separate merch storefront (own collection): q, category, brand, sort + pager, detail + related game, wishlist |
 | `/api/cart` | add / qty / remove, mixed digital games + boxed games + toys (`kind` split) |
 | `/api/checkout` + `/api/orders` | quote, atomic place order (GameKey.claimOne + stock guards), tax+shipping math, tracking `PV-XXX`, advance scan, order detail shows decrypted demo keys |
-| `/api/library` | owned games, play +30min, achievements, delivered keys grouped by game, toy library + wishlists, `/api/recommendations` by genre |
-| `/api/dev` | apply, dashboard (gross, 70% cut, monthly, by-country), new game, payout, `/:id/keys` vault (counts, CSV import, demo generate), toy restock |
-| `/api/mods` | browse, detail |
+| `/api/library` | owned games, play +30min, achievements, delivered keys with copy button, toy library + both wishlists (Games / Collectibles / Wishlist tabs), `/api/recommendations` by genre |
+| `/api/dev` | apply, dashboard (gross, 70% cut, monthly, by-country, low-key/low-box alerts), new game, edit game, payout, `/:id/keys` vault (counts, masked list, CSV import, demo generate, revoke), toy shelf restock + price edit |
+| `/api/dev/sales` | report view + CSV download of monthly revenue (React page at `/dev/sales`) |
+| `/api/mods` | browse, upload by store slug, detail |
 | `/api/community` | boards, post detail, new post, replies |
 | `/api/reviews` | own-to-review, helpful votes, dev response |
 | `/api/users/:username` | profile, library preview, own orders |

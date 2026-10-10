@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { api } from './api.js';
-import { Layout } from './components.jsx';
+import { Layout, ToastHost } from './components.jsx';
 import { Home, Store, GameDetail, Toys, ToyDetail } from './pages-shop.jsx';
 import { Cart, Checkout, Orders, OrderDetail, Library, Recommendations } from './pages-trade.jsx';
-import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings } from './pages-user.jsx';
+import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevSales, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings } from './pages-user.jsx';
 
 export default function App() {
   const [me, setMe] = useState(null);
@@ -23,6 +23,7 @@ export default function App() {
         <span className="shard" /><span className="shard" /><span className="shard" /><span className="shard" />
       </div>
       <Layout me={me} onLogout={() => setMe(null)} theme={theme} onTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}>
+        <ToastHost>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/games" element={<Store />} />
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="/dev/new" element={<DevNew />} />
           <Route path="/dev/keys/:id" element={<DevKeys />} />
           <Route path="/dev/toys" element={<DevToys />} />
+          <Route path="/dev/sales" element={<DevSales />} />
           <Route path="/community" element={<Community />} />
           <Route path="/community/new" element={<CommunityNew />} />
           <Route path="/community/p/:id" element={<PostDetail />} />
@@ -51,6 +53,7 @@ export default function App() {
           <Route path="/settings" element={<Settings me={me} onMe={setMe} theme={theme} onTheme={(t) => setTheme(t)} />} />
           <Route path="*" element={<p className="muted">404 — vault corridor not found. <a href="/">Back home</a></p>} />
         </Routes>
+        </ToastHost>
       </Layout>
     </BrowserRouter>
   );

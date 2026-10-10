@@ -618,14 +618,42 @@ router.post('/dev/:id/keys/generate', needDev, async (req, res) => {
   res.json({ ok: true, added });
 });
 
+// Masked key list — never returns plaintext (owners never need it on this screen).
+router.get('/dev/:id/keys/list', needDev, async (req, res) => {
+  const game = await Game.findOne({ _id: req.params.id, developer: req.session.user._id }).lean();
+  if (!game) return res.status(404).json({ error: 'Not found' });
+  const lim = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+  const keys = await GameKey.find({ game: game._id }).sort({ createdAt: -1 }).limit(lim).lean();
+  // codeEnc is iv.tag.data — mask to last 4 chars of the data segment.
+  res.json({ keys: keys.map((k) => ({ _id: k._id, status: k.status, batchId: k.batchId, platform: k.platform, mask: '••••-••••-••••-' + String(k.codeEnc || '').split('.').pop().slice(-4) })) });
+});
+
+// Revoke a single available key (blocked once sold).
+router.post('/dev/:id/keys/:keyId/revoke', needDev, async (req, res) => {
+  const game = await Game.findOne({ _id: req.params.id, developer: req.session.user._id }).lean();
+  if (!game) return res.status(404).json({ error: 'Not found' });
+  const k = await GameKey.findOne({ _id: req.params.keyId, game: game._id });
+  if (!k) return res.status(404).json({ error: 'Key not found' });
+  if (k.status === 'sold') return res.status(400).json({ error: 'Sold keys cannot be revoked.' });
+  if (k.status === 'revoked') return res.json({ ok: true });
+  k.status = 'revoked';
+  await k.save();
+  await Game.updateOne({ _id: game._id }, { $inc: { 'stats.keysAvailable': -1 } });
+  res.json({ ok: true });
+});
+
 router.get('/dev/toys', needDev, async (req, res) => {
   const toys = await Toy.find({}).sort({ title: 1 }).lean();
   res.json({ toys });
 });
 
 router.post('/dev/toys/:id/restock', needDev, async (req, res) => {
-  const qty = Math.max(0, Math.min(999, Number(req.body.stock ?? 0)));
-  await Toy.updateOne({ _id: req.params.id }, { $set: { stock: qty } });
+  const patch = {};
+  if (req.body.stock !== undefined) patch.stock = Math.max(0, Math.min(9999, Number(req.body.stock) || 0));
+  if (req.body.price !== undefined) patch.price = Math.max(0, Number(req.body.price) || 0);
+  const t = await Toy.findById(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  await Toy.updateOne({ _id: t._id }, patch);
   res.json({ ok: true });
 });
 

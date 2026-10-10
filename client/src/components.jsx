@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, createContext, useContext } from 'react';
 import { api, priceOf } from './api.js';
 import { BUILD } from './version.js';
 
@@ -10,6 +10,26 @@ function ApiStatus() {
   }, []);
   return <span className="tiny"> · API: {s || '…'}</span>;
 }
+
+/* global toast host — one instance in App, called via toast() */
+const ToastCtx = createContext(() => {});
+export function ToastHost({ children }) {
+  const [items, setItems] = useState([]);
+  const push = (msg, kind = 'ok') => {
+    const id = Math.random().toString(36).slice(2);
+    setItems((xs) => [...xs.slice(-2), { id, msg, kind }]);
+    setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), 3200);
+  };
+  return (
+    <ToastCtx.Provider value={push}>
+      {children}
+      <div className="toast-host" role="status" aria-live="polite">
+        {items.map((t) => <div key={t.id} className={'toast ' + t.kind}>{t.msg}</div>)}
+      </div>
+    </ToastCtx.Provider>
+  );
+}
+export const useToast = () => useContext(ToastCtx);
 
 function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
   const nav = useNavigate();
