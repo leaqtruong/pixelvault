@@ -45,6 +45,15 @@ npm run dev            # http://localhost:3000
 
 MongoDB: install MongoDB Community Server (or point `MONGO_URI` at Atlas), make sure it listens on `mongodb://127.0.0.1:27017`. The server also runs with an empty DB (pages show empty states).
 
+### `start-website.bat`
+
+Checks Node, frees port 3000, locates MongoDB, installs packages, builds the frontend, then starts the store and opens the browser.
+
+- **MongoDB discovery** — looks at `MONGOD_EXE`, then `PATH`, then the usual install folders (`C:\Program Files\MongoDB`, `%LOCALAPPDATA%\MongoDB`, `C:\MongoDB`, `D:\`, `E:\`, `F:\MongoDB` and the `MongolDB` spelling) so nothing is hardcoded to one machine. Override with `MONGOD_EXE=<full path to mongod.exe>`; choose the data folder with `MONGOD_DATA=<path>` (defaults to `.mongo-data` beside the repo). If nothing is found it says so and still starts — set `MONGO_URI` in `.env` and run Mongo yourself.
+- **Port 3000** — if a previous run is still listening it stops that process, verifies the port actually came free, and fails with a readable message instead of a Node stack trace.
+- **Waits** — polls with `ping`, not `timeout`, because `timeout` silently no-ops when stdin is redirected. MongoDB gets 30s to accept connections; port 3000 gets 10s to release.
+- **Secret warning** — prints a notice if `.env` still contains the `change-me` placeholders from `.env.example`.
+
 Google login (optional): create an OAuth 2.0 Client ID at `console.cloud.google.com` (Web application, authorized JavaScript origin `http://localhost:3000`), set `GOOGLE_CLIENT_ID` in `.env`, restart. The login page then shows a real "Sign in with Google" button verified server-side.
 
 ## Routes (`/api/*` JSON, session-authenticated)
