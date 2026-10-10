@@ -35,11 +35,11 @@ export function Cart() {
               <tbody>
                 {d.items.map((i) => {
                   const toy = (i.kind || 'game') === 'toy';
-                  const href = toy ? `/toys/${i.slug || ''}` : `/games/${i.slug || ''}`;
+                  const href = toy ? `/toys/${i.slug}` : `/games/${i.slug}`;
                   return (
                     <tr key={i.key}>
                       <td><img className="t-art" src={i.coverImage} alt="" /></td>
-                      <td><Link className="t-name" to={i.slug ? href : '#'}>{i.title}</Link></td>
+                      <td><Link className="t-name" to={href}>{i.title}</Link></td>
                       <td className="t-genre">{toy ? 'Collectible' : i.edition || 'Digital'}</td>
                       <td className="num">${i.unitPrice.toFixed(2)}</td>
                       <td>

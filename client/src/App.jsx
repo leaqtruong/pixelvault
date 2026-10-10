@@ -18,20 +18,22 @@ export default function App() {
   }, [theme]);
 
   // Self-healing build check: if the bundle on disk moved on, take the tab with it.
+  // sessionStorage guard prevents a reload loop if the stamp ever disagrees twice.
   useEffect(() => {
-    let tries = 0;
     const check = () => {
       fetch('/api/version', { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
-          if (d && d.build && d.build !== BUILD) {
-            try { sessionStorage.setItem('pv-reloaded', d.build); } catch {}
-            window.location.reload();
-          }
+          if (!d || !d.build || d.build === BUILD) { try { sessionStorage.removeItem('pv-reloaded'); } catch {} return; }
+          let seen = null;
+          try { seen = sessionStorage.getItem('pv-reloaded'); } catch {}
+          if (seen === d.build) return;              // already reloaded onto this stamp
+          try { sessionStorage.setItem('pv-reloaded', d.build); } catch {}
+          window.location.reload();
         })
         .catch(() => {});
     };
-    const t = setInterval(() => { if (++tries % 2 === 0) check(); }, 20000);
+    const t = setInterval(check, 20000);
     check();
     return () => clearInterval(t);
   }, []);

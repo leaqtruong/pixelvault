@@ -231,21 +231,28 @@ const getCart = (req) => { if (!req.session.cart) req.session.cart = []; return 
 
 router.get('/cart', async (req, res) => {
   const items = getCart(req);
+  const dead = [];
   for (const i of items) {
     if ((i.kind || 'game') === 'toy') {
       const t = await Toy.findById(i.toyId).lean();
-      if (t) { i.title = t.title; i.coverImage = t.coverImage; i.unitPrice = t.price; i.weightLb = t.weightLb || 1.0; i.stock = t.stock; }
+      if (t) {
+        i.title = t.title; i.slug = t.slug; i.coverImage = t.coverImage;
+        i.unitPrice = t.price; i.weightLb = t.weightLb || 1.0; i.stock = t.stock;
+      } else dead.push(i.key);
     } else {
       const g = await Game.findById(i.gameId).lean();
       if (g) {
-        i.title = g.title; i.coverImage = g.coverImage;
+        i.title = g.title; i.slug = g.slug; i.coverImage = g.coverImage;
         i.unitPrice = i.edition === 'physical' ? g.physical.price || g.price + 15 : +(g.price * (1 - g.discountPct / 100)).toFixed(2);
         i.weightLb = i.edition === 'physical' ? g.physical.weightLb || 0.5 : 0;
         i.stock = g.physical.stock;
-      }
+      } else dead.push(i.key);
     }
   }
-  res.json({ items, subtotal: +items.reduce((s, i) => s + i.unitPrice * i.qty, 0).toFixed(2) });
+  // drop entries whose product vanished from the catalog
+  for (const k of dead) req.session.cart = req.session.cart.filter((x) => x.key !== k);
+  const live = getCart(req);
+  res.json({ items: live, subtotal: +live.reduce((s, i) => s + (Number(i.unitPrice) || 0) * i.qty, 0).toFixed(2) });
 });
 
 router.post('/cart/add', async (req, res) => {
