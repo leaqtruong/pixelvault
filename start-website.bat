@@ -84,8 +84,9 @@ if not errorlevel 1 (
   echo(
   echo  [warn] .env still holds the placeholder secrets from .env.example.
   echo      Fine locally, but set real values before publishing:
-  echo        JWT_SECRET=^(60+ random chars^)
-  echo        KEY_ENCRYPTION_KEY=^(32+ chars^)
+  echo        SESSION_SECRET=^(60+ random chars^)
+  echo        KEY_ENCRYPTION_SECRET=^(32+ chars^)
+  echo      Rotate the key secret with: node seed/rotate-key-secret.js --apply
   echo(
 )
 

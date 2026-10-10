@@ -13,6 +13,10 @@ const { decryptKey } = require('../lib/keyCrypto');
 
 const router = express.Router();
 
+// Mongoose ids are 24-char hex. Anything else in an :id route is a bad
+// request, not a server fault — checked before it reaches a query.
+const isObjectId = (v) => typeof v === 'string' && /^[0-9a-fA-F]{24}$/.test(v);
+
 // ---------- deployed build stamp ----------
 // The SPA polls this. If the bundle on disk is newer than what the tab is
 // running, the client reloads itself — no more staring at a stale build.
@@ -431,6 +435,7 @@ router.get('/orders', needLogin, async (req, res) => {
 });
 
 router.get('/orders/:id', needLogin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Order not found' });
   const order = await Order.findById(req.params.id).populate('items.game').populate('items.toy').populate('items.keyIds').lean();
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (String(order.user) !== String(req.session.user._id) && req.session.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
@@ -838,4 +843,38 @@ router.post('/auth/google', async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-module.exports = router;
+// ---------- safety net ----------
+// Express 4 does not catch rejected promises from async handlers, so a bad
+// request such as /api/orders/garbage threw a Mongoose CastError that became
+// an unhandled rejection and killed the whole server. Wrap every handler so a
+// throw lands in the error handler below instead.
+router.stack.forEach((layer) => {
+  if (!layer.route) return;
+  layer.route.stack.forEach((s) => {
+    const orig = s.handle;
+    if (typeof orig !== 'function' || orig.length >= 4) return;
+    s.handle = (req, res, next) => {
+      try {
+        const out = orig(req, res, next);
+        if (out && typeof out.catch === 'function') out.catch(next);
+      } catch (e) { next(e); }
+    };
+  });
+});
+
+router.use((req, res) => res.status(404).json({ error: `No API route for ${req.method} ${req.path}` }));
+
+// eslint-disable-next-line no-unused-vars
+router.use((err, req, res, next) => {
+  if (err && err.name === 'CastError') {
+    return res.status(400).json({ error: 'That id is not valid.' });
+  }
+  if (err && err.name === 'ValidationError') {
+    return res.status(400).json({ error: Object.values(err.errors || {}).map((e) => e.message).join(', ') || 'Invalid data.' });
+  }
+  const status = (err && err.status) || 500;
+  if (status >= 500) console.error('[api]', err);
+  res.status(status).json({ error: (err && err.message) || 'Server error' });
+});
+
+module.exports = { router, isObjectId };

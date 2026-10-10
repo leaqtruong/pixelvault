@@ -24,7 +24,7 @@ Figures shown in the hero ledger are counted from MongoDB on each `/api/home` re
 | `server.js` | Express: serves `/api/*` JSON + `client/dist` static with SPA fallback |
 | `routes/api.js` | All JSON endpoints (auth, games, toys, cart, checkout, orders, library, dev, reviews, users, community, mods) |
 | `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Mod`, `Post`, `Review` |
-| `seed/` | `import-steam.js` (47 real games), `seed-toys.js` (12 merch), `find-mongo.js` (mongod discovery for the launcher), `check-db.js` (catalog verification), test helpers |
+| `seed/` | `import-steam.js` (47 real games), `seed-toys.js` (12 merch), `find-mongo.js` (mongod discovery for the launcher), `check-db.js` (catalog verification), `rotate-key-secret.js` (secret migration), test helpers |
 
 ## Run (any machine)
 
@@ -55,6 +55,45 @@ Checks Node, frees port 3000, locates and starts MongoDB, installs packages, ver
 - **Database gate** — while MongoDB is still connecting the API answers `503` instead of letting Mongoose buffer queries and crash the process with `buffering timed out`. The SPA shows a "Connecting to MongoDB" boot screen and polls until it answers.
 - **Port 3000** — if a previous run is still listening it stops that process, verifies the port actually came free, and fails with a readable message instead of a Node stack trace.
 - **Waits** — polls with `ping`, not `timeout`, because `timeout` silently no-ops when stdin is redirected. MongoDB gets 30s to accept connections; port 3000 gets 10s to release.
+
+### MongoDB without the launcher
+
+`start-mongodb-only.bat` starts just the database — it exits immediately when port 27017 is already taken, so it is safe to run twice and never spawns a second `mongod`. It writes its output to `.mongo-logs/mongod.log` instead of holding a console window open.
+
+For automatic startup at sign-in, drop this line into your Startup folder (`Win+R` → `shell:startup`):
+
+```bat
+@echo off
+call "E:\pixelvault\start-mongodb-only.bat"
+```
+
+Registering a real Windows service needs an elevated shell, and it survives sign-out rather than only sign-in:
+
+```powershell
+# run PowerShell as Administrator
+& "E:\MongolDB\mongodb-win32-x86_64-windows-8.3.8\bin\mongod.exe" --install `
+  --serviceName "PixelVault MongoDB" --dbpath "E:\MongolDB\data\db"
+Start-Service "PixelVault MongoDB"
+```
+
+## Secrets
+
+`.env` holds `SESSION_SECRET` (signs the session cookie) and `KEY_ENCRYPTION_SECRET` (derives the AES-256-GCM key that encrypts every stored game key). `.env.example` ships placeholders; `start-website.bat` warns while they are still in place.
+
+Rotating `KEY_ENCRYPTION_SECRET` by hand orphans the key inventory: every `GameKey` row is `iv.tag.cipher` sealed under the old secret, so the first purchase after a naive swap fails to decrypt. Use the migration instead:
+
+```powershell
+$env:OLD_KEY_ENCRYPTION_SECRET = '<current value>'
+$env:NEW_KEY_ENCRYPTION_SECRET = '<new value, 32+ chars>'
+node seed/rotate-key-secret.js            # dry run: reports the plan
+node seed/rotate-key-secret.js --apply    # re-encrypts and updates .env
+```
+
+It decrypts every row with the old secret, verifies a round trip, aborts without writing if any row is unreadable, and rewrites `.env` only after the data is confirmed good. Changing `SESSION_SECRET` just signs everyone out.
+
+## Robustness
+
+Every async route handler is wrapped so a rejected promise becomes a JSON error instead of an unhandled rejection — Express 4 does not do this on its own, and a single bad id such as `/api/orders/garbage` used to kill the whole server. While MongoDB is still connecting the API answers `503` rather than letting Mongoose buffer queries; the SPA shows a "Connecting to MongoDB" screen and polls until the database answers.
 - **Secret warning** — prints a notice if `.env` still contains the `change-me` placeholders from `.env.example`.
 
 Google login (optional): create an OAuth 2.0 Client ID at `console.cloud.google.com` (Web application, authorized JavaScript origin `http://localhost:3000`), set `GOOGLE_CLIENT_ID` in `.env`, restart. The login page then shows a real "Sign in with Google" button verified server-side.

@@ -18,7 +18,7 @@ app.use(session({
 }));
 
 // JSON API for the React SPA
-app.use('/api', require('./routes/api'));
+app.use('/api', require('./routes/api').router);
 
 // React SPA (built with `npm run build --prefix client`)
 const dist = path.join(__dirname, 'client', 'dist');
