@@ -158,57 +158,83 @@ export function Dev() {
   const lowBox = d.games.filter((g) => g.physical?.enabled && (g.physical?.stock || 0) < 5);
   const canPayout = d.balance >= 10;
   return (<>
-    <h1>Dev console
-      <Link className="cta-btn sm" to="/dev/new">+ Publish game</Link>
-      <Link className="ghost-btn sm" to="/dev/toys">Toy shelf</Link>
-      <Link className="ghost-btn sm" to="/dev/sales">Sales report</Link>
-    </h1>
+    <div className="sec-head" style={{ marginTop: 0 }}>
+      <span className="ix">Studio</span>
+      <h1>Dev console</h1>
+      <Link className="more" to="/dev/sales">Sales report</Link>
+      <Link className="more" to="/dev/toys">Toy shelf</Link>
+      <Link className="cta-btn sm" to="/dev/new">Publish game</Link>
+    </div>
     <div className="alert-bar">
-      {d.balance < 10 && <div className="alert-info">Payout unlocks at <b>$10.00</b> — you have <b>${d.balance.toFixed(2)}</b>.</div>}
-      {!!lowKeys.length && <div className="alert-warn"><b>{lowKeys.length} title{lowKeys.length > 1 ? 's' : ''} out of keys.</b> Players can't buy until you restock. <Link to={`/dev/keys/${lowKeys[0]._id}`}>Restock now</Link></div>}
+      {d.balance < 10 && <div className="alert-info">Payout unlocks at <b>$10.00</b> — balance is <b>${d.balance.toFixed(2)}</b>.</div>}
+      {!!lowKeys.length && <div className="alert-warn"><b>{lowKeys.length} title{lowKeys.length > 1 ? 's' : ''} out of keys.</b> Players cannot buy until you restock. <Link to={`/dev/keys/${lowKeys[0]._id}`}>Restock now</Link></div>}
       {!!lowBox.length && <div className="alert-warn"><b>{lowBox.length} box edition{lowBox.length > 1 ? 's' : ''} low on stock</b> — under 5 units left.</div>}
     </div>
     <div className="kpi-row">
       <div className="kpi"><span>Gross sales</span><b>${d.gross.toFixed(2)}</b></div>
-      <div className="kpi"><span>Your cut (70%)</span><b>${d.devCut.toFixed(2)}</b></div>
+      <div className="kpi"><span>Your cut · 70%</span><b>${d.devCut.toFixed(2)}</b></div>
       <div className="kpi"><span>Digital units</span><b>{d.unitsD}</b></div>
       <div className="kpi"><span>Physical units</span><b>{d.unitsP}</b></div>
-      <div className="kpi"><span>Owed now</span><b>${d.balance.toFixed(2)}</b>
-        <button className="ghost-btn sm" onClick={payout} disabled={!canPayout} title={canPayout ? '' : 'Minimum $10'}>Request payout</button>
+      <div className="kpi">
+        <span>Owed now</span><b>${d.balance.toFixed(2)}</b>
+        <button className="ghost-btn sm" style={{ marginTop: 9 }} onClick={payout} disabled={!canPayout}>
+          {canPayout ? 'Request payout' : 'Needs $10'}
+        </button>
       </div>
     </div>
     <div className="two-col">
-      <div className="panel"><h3>Revenue by month</h3>
-        <table className="tbl"><tbody>
-          {d.monthly.length ? d.monthly.map(([m, v]) => <tr key={m}><td>{m}</td><td>${Number(v).toFixed(2)}</td></tr>)
-            : <tr><td colSpan="2" className="muted">No paid orders yet this year.</td></tr>}
-        </tbody></table>
+      <div className="panel">
+        <h3>Revenue by month</h3>
+        {d.monthly.length ? <table className="tbl"><tbody>
+          {d.monthly.map(([m, v]) => <tr key={m}><td className="mono">{m}</td><td className="right num">${Number(v).toFixed(2)}</td></tr>)}
+        </tbody></table> : <p className="muted">No paid orders recorded yet.</p>}
       </div>
-      <div className="panel"><h3>Sales by region</h3>
-        <table className="tbl"><tbody>
-          {Object.keys(d.byCountry || {}).length ? Object.entries(d.byCountry).map(([c, n]) => <tr key={c}><td>{c === 'DIGITAL' ? 'Digital (no address)' : c}</td><td>{n} orders</td></tr>)
-            : <tr><td className="muted">Nothing yet.</td></tr>}
-        </tbody></table>
+      <div className="panel">
+        <h3>Sales by region</h3>
+        {Object.keys(d.byCountry || {}).length ? <table className="tbl"><tbody>
+          {Object.entries(d.byCountry).map(([c, n]) => (
+            <tr key={c}><td>{c === 'DIGITAL' ? 'Digital only' : c}</td><td className="right num">{n}</td></tr>
+          ))}
+        </tbody></table> : <p className="muted">No shipped orders yet.</p>}
       </div>
     </div>
-    <div className="panel"><h3>Your games ({d.games.length})</h3>
-      {d.games.length ? d.games.map((g) => <div key={g._id}>
-        <p>
-          <Link to={`/games/${g.slug}`}>{g.title}</Link> — ${g.stats.revenueGross.toFixed(2)}
-          {(g.price || 0) > 0 && <span className="tiny"> · {(g.stats.keysAvailable || 0) === 0 ? <b style={{ color: 'var(--ember)' }}>keys out</b> : `keys ${g.stats.keysAvailable}`}</span>}
-          {g.physical?.enabled && <span className="tiny"> · box {g.physical.stock}</span>}
-          {' '}· <span className="tiny">{g.status}</span>
-          <Link className="ghost-btn sm" to={`/dev/keys/${g._id}`}>Keys</Link>
-          <button className="ghost-btn sm" onClick={() => setEditing(editing === g._id ? null : g._id)}>Edit</button>
-        </p>
-        {editing === g._id && <form className="row" onSubmit={(e) => saveEdit(e, g)}>
-          <input name="price" type="number" step="0.01" defaultValue={g.price} title="Price" />
-          <input name="discountPct" type="number" defaultValue={g.discountPct} title="% off" />
-          <input name="physicalStock" type="number" defaultValue={g.physical?.stock || 0} title="Box stock" />
-          <select name="status" defaultValue={g.status}><option>published</option><option>draft</option><option>delisted</option></select>
-          <button className="cta-btn sm">Save</button>
-        </form>}
-      </div>) : <p className="muted">No titles yet — <Link to="/dev/new">publish your first game</Link>.</p>}
+    <div className="panel">
+      <h3>Your titles ({d.games.length})</h3>
+      {d.games.length ? (
+        <table className="tbl">
+          <thead><tr><th>Title</th><th>Price</th><th>Keys</th><th>Box</th><th>Revenue</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {d.games.map((g) => (
+              <tr key={g._id}>
+                <td><Link className="t-name" to={`/games/${g.slug}`}>{g.title}</Link>
+                  {editing === g._id && (
+                    <form className="row" onSubmit={(e) => saveEdit(e, g)} style={{ marginTop: 8 }}>
+                      <input name="price" type="number" step="0.01" defaultValue={g.price} aria-label="Price" />
+                      <input name="discountPct" type="number" defaultValue={g.discountPct} aria-label="Percent off" />
+                      <input name="physicalStock" type="number" defaultValue={g.physical?.stock || 0} aria-label="Box stock" />
+                      <select name="status" defaultValue={g.status} aria-label="Status">
+                        <option>published</option><option>draft</option><option>delisted</option>
+                      </select>
+                      <button className="cta-btn sm">Save</button>
+                    </form>
+                  )}
+                </td>
+                <td className="num">${g.price.toFixed(2)}</td>
+                <td className="num" style={(g.price > 0 && !g.stats.keysAvailable) ? { color: 'var(--ember)' } : undefined}>
+                  {(g.price || 0) > 0 ? g.stats.keysAvailable || 0 : '—'}
+                </td>
+                <td className="num">{g.physical?.enabled ? g.physical.stock : '—'}</td>
+                <td className="num">${g.stats.revenueGross.toFixed(2)}</td>
+                <td className="tiny">{g.status}</td>
+                <td>
+                  <Link className="ghost-btn sm" to={`/dev/keys/${g._id}`}>Keys</Link>{' '}
+                  <button className="ghost-btn sm" onClick={() => setEditing(editing === g._id ? null : g._id)}>Edit</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <p className="muted">No titles yet — <Link to="/dev/new">publish your first game</Link>.</p>}
     </div>
   </>);
 }

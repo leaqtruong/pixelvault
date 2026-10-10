@@ -3,27 +3,76 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api } from './api.js';
 import { GameCard, useToast } from './components.jsx';
 
-export function Cart({ refresh }) {
+export function Cart() {
   const [d, setD] = useState(null);
   const toast = useToast();
   const load = () => api('/cart').then(setD).catch(() => setD({ items: [] }));
   useEffect(load, []);
-  const setQty = async (key, qty) => { try { await api('/cart/qty', { method: 'POST', body: { key, qty } }); load(); } catch (er) { toast(er.message, 'err'); } };
-  const rm = async (key) => { await api('/cart/remove', { method: 'POST', body: { key } }); toast('Removed from cart'); load(); };
+  const setQty = async (key, qty) => {
+    try { await api('/cart/qty', { method: 'POST', body: { key, qty } }); load(); }
+    catch (er) { toast(er.message, 'err'); }
+  };
+  const rm = async (key) => {
+    try { await api('/cart/remove', { method: 'POST', body: { key } }); toast('Removed from cart'); load(); }
+    catch (er) { toast(er.message, 'err'); }
+  };
   if (!d) return <p className="muted">Loading…</p>;
+  const units = d.items.reduce((s, i) => s + i.qty, 0);
   return (
     <>
-      <h1>Cart</h1>
-      {!d.items.length && <p className="muted">Empty. <Link to="/games">Go loot the store →</Link></p>}
-      {d.items.map((i) => (
-        <div key={i.key} className="cart-row"><img src={i.coverImage} />
-          <div><b>{i.title}</b><div className="tiny">{(i.kind || 'game') === 'toy' ? 'collectible' : i.edition} · ${i.unitPrice.toFixed(2)} each</div></div>
-          <span><input type="number" value={i.qty} min="1" max="9" style={{ width: 60 }} onChange={(e) => setQty(i.key, e.target.value)} /></span>
-          <b>${(i.unitPrice * i.qty).toFixed(2)}</b>
-          <button className="ghost-btn sm" onClick={() => rm(i.key)}>x</button>
+      <div className="sec-head" style={{ marginTop: 0 }}>
+        <span className="ix">Checkout</span>
+        <h1>Your cart</h1>
+        <span className="tiny" style={{ marginLeft: 'auto' }}>{units} {units === 1 ? 'unit' : 'units'}</span>
+      </div>
+      {d.items.length ? (
+        <div className="two-col">
+          <div>
+            <table className="ptable">
+              <thead><tr>
+                <th></th><th>Item</th><th>Type</th><th>Unit</th><th>Qty</th><th>Line</th><th></th>
+              </tr></thead>
+              <tbody>
+                {d.items.map((i) => {
+                  const toy = (i.kind || 'game') === 'toy';
+                  const href = toy ? `/toys/${i.slug || ''}` : `/games/${i.slug || ''}`;
+                  return (
+                    <tr key={i.key}>
+                      <td><img className="t-art" src={i.coverImage} alt="" /></td>
+                      <td><Link className="t-name" to={i.slug ? href : '#'}>{i.title}</Link></td>
+                      <td className="t-genre">{toy ? 'Collectible' : i.edition || 'Digital'}</td>
+                      <td className="num">${i.unitPrice.toFixed(2)}</td>
+                      <td>
+                        <input type="number" value={i.qty} min="1" max="9" aria-label={`Quantity for ${i.title}`}
+                          style={{ width: 58, padding: '5px 7px' }}
+                          onChange={(e) => setQty(i.key, e.target.value)} />
+                      </td>
+                      <td className="t-now">${(i.unitPrice * i.qty).toFixed(2)}</td>
+                      <td><button className="ghost-btn sm" onClick={() => rm(i.key)} aria-label={`Remove ${i.title}`}>Remove</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="buy-rail" style={{ position: 'static' }}>
+            <h3>Summary</h3>
+            <div className="ledger-row"><span className="k">Subtotal</span><span className="v num">${d.subtotal.toFixed(2)}</span></div>
+            <div className="ledger-row"><span className="k">Units</span><span className="v num">{units}</span></div>
+            <p className="tiny" style={{ margin: '12px 0 14px' }}>
+              Tax and shipping are calculated on the next step. Digital keys are delivered instantly.
+            </p>
+            <Link className="cta-btn" style={{ display: 'block', textAlign: 'center' }} to="/checkout">Continue to checkout</Link>
+            <Link className="ghost-btn sm" style={{ display: 'block', textAlign: 'center', marginTop: 8 }} to="/games">Keep browsing</Link>
+          </div>
         </div>
-      ))}
-      {!!d.items.length && <div className="panel right"><h3>Subtotal: ${d.subtotal.toFixed(2)}</h3><Link className="cta-btn big" to="/checkout">Checkout →</Link></div>}
+      ) : (
+        <div className="empty">
+          <h3>Your cart is empty</h3>
+          <p>Nothing queued for checkout. Browse the catalog or the toy shelf.</p>
+          <Link className="cta-btn" to="/games">Open the catalog</Link>
+        </div>
+      )}
     </>
   );
 }
@@ -73,12 +122,55 @@ export function Checkout() {
 
 export function Orders() {
   const [d, setD] = useState(null);
+  const [f, setF] = useState('all');
   useEffect(() => { api('/orders').then(setD).catch(() => setD({ orders: [] })); }, []);
   if (!d) return <p className="muted">Loading…</p>;
+  const all = d.orders || [];
+  const rows = f === 'all' ? all : all.filter((o) => o.status === f);
+  const states = [...new Set(all.map((o) => o.status))];
+  const spent = all.filter((o) => o.status !== 'cancelled').reduce((s, o) => s + (o.grandTotal || 0), 0);
   return (
-    <><h1>Order history</h1>
-      {(d.orders || []).map((o) => <Link key={o._id} className="thread" to={`/orders/${o._id}`}><b>#{String(o._id).slice(-6)} · ${o.grandTotal.toFixed(2)}</b><span>{o.status} · {new Date(o.createdAt).toLocaleDateString()}</span></Link>)}
-      {!d.orders.length && <p className="muted">No orders yet.</p>}
+    <>
+      <div className="sec-head" style={{ marginTop: 0 }}>
+        <span className="ix">Account</span>
+        <h1>Order history</h1>
+        <span className="tiny" style={{ marginLeft: 'auto' }}>{all.length} orders</span>
+      </div>
+      <div className="kpi-row">
+        <div className="kpi"><span>Orders placed</span><b>{all.length}</b></div>
+        <div className="kpi"><span>Lifetime spend</span><b>${spent.toFixed(2)}</b></div>
+        <div className="kpi"><span>In progress</span><b>{all.filter((o) => o.status !== 'delivered' && o.status !== 'cancelled').length}</b></div>
+      </div>
+      <div className="chips">
+        <button className={'chip' + (f === 'all' ? ' on' : '')} onClick={() => setF('all')}>All ({all.length})</button>
+        {states.map((s) => (
+          <button key={s} className={'chip' + (f === s ? ' on' : '')} onClick={() => setF(s)}>
+            {s} ({all.filter((o) => o.status === s).length})
+          </button>
+        ))}
+      </div>
+      {rows.length ? (
+        <table className="ptable">
+          <thead><tr><th>Order</th><th>Placed</th><th>Items</th><th>Status</th><th>Total</th></tr></thead>
+          <tbody>
+            {rows.map((o) => (
+              <tr key={o._id}>
+                <td><Link className="t-name" to={`/orders/${o._id}`}>#{String(o._id).slice(-6).toUpperCase()}</Link></td>
+                <td className="t-genre">{new Date(o.createdAt).toLocaleDateString()}</td>
+                <td className="t-genre">{(o.items || []).reduce((s, i) => s + i.qty, 0)} units</td>
+                <td className="t-keys">{o.status}</td>
+                <td className="t-now">${o.grandTotal.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div className="empty">
+          <h3>No orders yet</h3>
+          <p>{all.length ? 'Nothing matches that filter.' : 'Once you buy something it shows up here with tracking.'}</p>
+          <Link className="cta-btn" to="/games">Browse the catalog</Link>
+        </div>
+      )}
     </>
   );
 }

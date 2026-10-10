@@ -4,7 +4,17 @@ ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + 
 
 Steam taxonomy: genres / tags / platforms / specials mirror `store.steampowered.com/search` facets — see `lib/steamTaxonomy.js`. Live player counts + community review verdicts come from public Steam Web APIs (`lib/steamLive.js`, 10-min cache).
 
-UI: React SPA with Jersey 25 display font + Inter body, square amber/gallery theme, animated shattering-glass backdrop (subtle), light/dark themes, toast notifications, hero carousel, collapsible left panel.
+UI: React SPA. Design tokens and the three layout families live at the top of `client/src/index.css`.
+
+| Family | Pages | Structure |
+|---|---|---|
+| Catalog Front | home, store, toys | split hero + ledger of real counts, category marquee, special offers as a price table, trending as a numbered index, merch shelf, forum strip |
+| Workbench | cart, checkout, orders, library, dev console, key vault, toy shelf | line-item tables, KPI strips, hairline filters, inline editing |
+| Long Document | game detail, toy detail, profile | editorial column with a sticky purchase rail |
+
+Header is a single masthead in two tiers (identity row, then one nav row) with no duplicate bar inside the content. Light/dark themes, toast notifications, dark glyphs instead of emoji, and a soft shattering-glass backdrop. Display face is Jersey 25 (Sarah Cadigan-Fried), body is Inter, prices and keys use the mono stack. All frames are square.
+
+Figures shown in the hero ledger are counted from MongoDB on each `/api/home` request — nothing is hardcoded.
 
 ## Layout
 

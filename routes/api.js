@@ -183,7 +183,24 @@ router.get('/home', async (req, res) => {
       const g = await Game.findOne({ status: 'published', productType: { $ne: 'toy' }, genres: c }).lean();
       if (g) catTiles.push({ name: c, img: g.coverImage, slug: g.slug });
     }
-    res.json({ featured, deals, fresh, threads, toys, catTiles });
+    // Ledger figures — all counted from the database, never invented.
+    const published = { status: 'published', productType: { $ne: 'toy' } };
+    const [titles, toyCount, dealsAgg, keysAgg, orderAgg] = await Promise.all([
+      Game.countDocuments(published),
+      Toy.countDocuments({ status: 'published' }),
+      Game.countDocuments({ ...published, discountPct: { $gt: 0 } }),
+      Game.aggregate([{ $match: published }, { $group: { _id: null, n: { $sum: '$stats.keysAvailable' } } }]),
+      Order.countDocuments({ status: { $ne: 'cancelled' } }),
+    ]);
+    const ledger = {
+      titles,
+      toys: toyCount,
+      onSale: dealsAgg,
+      keys: keysAgg[0]?.n || 0,
+      orders: orderAgg,
+      avgOff: deals.length ? Math.round(deals.reduce((s, g) => s + (g.discountPct || 0), 0) / deals.length) : 0,
+    };
+    res.json({ featured, deals, fresh, threads, toys, catTiles, ledger });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
