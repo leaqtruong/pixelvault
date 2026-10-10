@@ -6,8 +6,23 @@ export async function api(path, opts = {}) {
     ...(opts.body && typeof opts.body !== 'string' ? { body: JSON.stringify(opts.body) } : {}),
   });
   const data = await r.json().catch(() => ({}));
+  if (r.status === 503) {
+    const e = new Error(data.error || 'Database is not available yet.');
+    e.dbDown = true;
+    throw e;
+  }
   if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
   return data;
+}
+
+/* Poll an endpoint until the database answers. Used by the boot screen so a
+   cold start shows "connecting" instead of a broken page. */
+export async function waitForDb(path = '/stats', tries = 40, gapMs = 1500) {
+  for (let i = 0; i < tries; i++) {
+    try { return await api(path); } catch (e) { if (!e.dbDown) throw e; }
+    await new Promise((r) => setTimeout(r, gapMs));
+  }
+  throw new Error('Database did not come up. Check that MongoDB is running.');
 }
 
 export const priceOf = (g) => +(g.price * (1 - (g.discountPct || 0) / 100)).toFixed(2);

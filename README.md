@@ -24,7 +24,7 @@ Figures shown in the hero ledger are counted from MongoDB on each `/api/home` re
 | `server.js` | Express: serves `/api/*` JSON + `client/dist` static with SPA fallback |
 | `routes/api.js` | All JSON endpoints (auth, games, toys, cart, checkout, orders, library, dev, reviews, users, community, mods) |
 | `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Mod`, `Post`, `Review` |
-| `seed/` | `import-steam.js` (47 real games), `seed-toys.js` (12 merch), test helpers |
+| `seed/` | `import-steam.js` (47 real games), `seed-toys.js` (12 merch), `find-mongo.js` (mongod discovery for the launcher), `check-db.js` (catalog verification), test helpers |
 
 ## Run (any machine)
 
@@ -47,9 +47,12 @@ MongoDB: install MongoDB Community Server (or point `MONGO_URI` at Atlas), make 
 
 ### `start-website.bat`
 
-Checks Node, frees port 3000, locates MongoDB, installs packages, builds the frontend, then starts the store and opens the browser.
+Checks Node, frees port 3000, locates and starts MongoDB, installs packages, verifies the catalog, builds the frontend, then starts the store and opens the browser.
 
-- **MongoDB discovery** — looks at `MONGOD_EXE`, then `PATH`, then the usual install folders (`C:\Program Files\MongoDB`, `%LOCALAPPDATA%\MongoDB`, `C:\MongoDB`, `D:\`, `E:\`, `F:\MongoDB` and the `MongolDB` spelling) so nothing is hardcoded to one machine. Override with `MONGOD_EXE=<full path to mongod.exe>`; choose the data folder with `MONGOD_DATA=<path>` (defaults to `.mongo-data` beside the repo). If nothing is found it says so and still starts — set `MONGO_URI` in `.env` and run Mongo yourself.
+- **MongoDB discovery** — `seed/find-mongo.js` does the probing: `MONGOD_EXE`, then `PATH`, then the usual install folders (`C:\Program Files\MongoDB`, `%LOCALAPPDATA%\MongoDB`, `C:\MongoDB`, `D:\`, `E:\MongoDB`, `E:\MongolDB`, `F:\MongoDB`, plus `<repo>\mongodb`). It accepts only a real `mongod.exe` binary — a naive recursive scan once returned MongoDB Compass's folder instead. Override with `MONGOD_EXE=<full path>`.
+- **Data folder** — picked by walking up from the discovered binary for an existing `data\db`, so an existing install is reused rather than silently booting a brand-new empty database. Override with `MONGOD_DATA=<path>`. If nothing is found the launcher says so and still starts; set `MONGO_URI` in `.env` and run Mongo yourself.
+- **Catalog verification** — `seed/check-db.js` prints the real counts before the server boots (`47 games · 12 toys · 391 keys`) and tells you which seed command to run if the database is empty, so an empty storefront is never silent.
+- **Database gate** — while MongoDB is still connecting the API answers `503` instead of letting Mongoose buffer queries and crash the process with `buffering timed out`. The SPA shows a "Connecting to MongoDB" boot screen and polls until it answers.
 - **Port 3000** — if a previous run is still listening it stops that process, verifies the port actually came free, and fails with a readable message instead of a Node stack trace.
 - **Waits** — polls with `ping`, not `timeout`, because `timeout` silently no-ops when stdin is redirected. MongoDB gets 30s to accept connections; port 3000 gets 10s to release.
 - **Secret warning** — prints a notice if `.env` still contains the `change-me` placeholders from `.env.example`.

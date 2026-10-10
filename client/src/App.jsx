@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { api } from './api.js';
+import { api, waitForDb } from './api.js';
 import { Layout, ToastHost } from './components.jsx';
 import { BUILD } from './version.js';
 import { Home, Store, GameDetail, Toys, ToyDetail } from './pages-shop.jsx';
@@ -9,9 +9,22 @@ import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevS
 
 export default function App() {
   const [me, setMe] = useState(null);
+  const [dbUp, setDbUp] = useState(false);
   const [ready, setReady] = useState(false);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('pv-theme') || 'dark'; } catch { return 'dark'; } });
-  useEffect(() => { api('/auth/me').then((d) => setMe(d.user)).catch(() => {}).finally(() => setReady(true)); }, []);
+  // Hold the UI until MongoDB answers, then retry silently in the background.
+  useEffect(() => {
+    let alive = true;
+    waitForDb('/stats', 60, 1500)
+      .then(() => { if (alive) { setDbUp(true); setReady(true); } })
+      .catch(() => { if (alive) setReady(true); });
+    const t = setInterval(() => { if (!alive) return; fetch('/api/stats', { cache: 'no-store' }).then((r) => r.ok && setDbUp(true)).catch(() => {}); }, 4000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+  useEffect(() => {
+    if (!dbUp) return;
+    api('/auth/me').then((d) => setMe(d.user)).catch(() => {}).finally(() => setReady(true));
+  }, [dbUp]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem('pv-theme', theme); } catch {}
@@ -38,7 +51,12 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  if (!ready) return <p className="muted" style={{ padding: 40 }}>Loading PixelVault…</p>;
+  if (!ready) return (
+    <div className="boot">
+      <p className="logo">PIXEL<span>VAULT</span></p>
+      <p className="tiny">Connecting to MongoDB — this takes a second on a cold start.</p>
+    </div>
+  );
   return (
     <BrowserRouter>
       <div className="bg-fx" aria-hidden="true">

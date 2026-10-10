@@ -39,24 +39,25 @@ if not errorlevel 1 (
 )
 
 echo  [..] Looking for mongod.exe ...
-call :find_mongod
+for /f "usebackq tokens=1,* delims==" %%k in (`node "%~dp0seed\find-mongo.js"`) do set "%%k=%%l"
 if not defined MONGOD (
   echo  [X] mongod.exe was not found automatically.
-  echo      Install MongoDB Community, or point MONGO_URI in .env at a server
-  echo      you start yourself. The site still boots, but the catalog stays
-  echo      empty until the database answers.
+  echo      Install MongoDB Community, or set MONGOD_EXE to the full path of
+  echo      mongod.exe before running this file. The site still boots, but the
+  echo      catalog stays empty until the database answers.
   goto :mongo_done
 )
 
 echo  [ok] Found: !MONGOD!
+echo  [ok] Data folder: !DBPATH!
 if not exist "!DBPATH!" (
   mkdir "!DBPATH!" >nul 2>&1
-  if exist "!DBPATH!" (echo  [ok] Data folder: !DBPATH!) else (echo  [warn] Data folder !DBPATH! is missing - MongoDB may fail to start.)
+  if not exist "!DBPATH!" (echo  [warn] Could not create !DBPATH! - MongoDB may fail to start.)
 )
 start "PixelVault MongoDB" /min "!MONGOD!" --dbpath "!DBPATH!" --port 27017 --bind_ip 127.0.0.1
 echo  [..] Waiting for MongoDB to accept connections ...
 call :wait_port 27017 30
-if errorlevel 1 (echo  [X] MongoDB did not answer within 30 seconds.) else (echo  [ok] MongoDB is up.)
+if errorlevel 1 (echo  [X] MongoDB did not answer within 30 seconds.) else (echo  [ok] MongoDB is up on 27017.)
 
 :mongo_done
 echo(
@@ -87,6 +88,11 @@ if not errorlevel 1 (
   echo        KEY_ENCRYPTION_KEY=^(32+ chars^)
   echo(
 )
+
+rem --------------------------------------------------- database sanity check
+echo  [..] Checking the catalog in MongoDB ...
+for /f "usebackq delims=" %%r in (`node "%~dp0seed\check-db.js"`) do echo   %%r
+echo(
 
 rem ---------------------------------------------------------------- build
 echo  [..] Building the frontend ...
@@ -143,12 +149,11 @@ for /l %%i in (1,1,!WF_TRIES!) do (
 exit /b 1
 
 rem =====================================================================
-rem  :wait_port <port> <seconds> - poll until LISTENING. errorlevel 1 on timeout.
-rem  Uses the exact ":<port> " token so :30001 never matches :3000.
+rem  :wait_port <port> <seconds> - poll until LISTENING. errorlevel 1 on
+rem  timeout. The exact ":<port> " token keeps :30001 from matching :3000.
+rem  ping -n 2 replaces "timeout /t 1": timeout refuses to run when stdin is
+rem  redirected, which silently collapses every wait loop to zero seconds.
 rem =====================================================================
-rem  ping -n 2 is used instead of "timeout /t 1": timeout refuses to run when
-rem  stdin is redirected, which silently collapses every wait loop to zero
-rem  seconds. ping keeps the delay under any launcher.
 :wait_port
 set "WP_PORT=%~1"
 set "WP_TRIES=%~2"
@@ -158,37 +163,3 @@ for /l %%i in (1,1,!WP_TRIES!) do (
   ping -n 2 127.0.0.1 >nul
 )
 exit /b 1
-
-rem =====================================================================
-rem  :find_mongod - locate mongod.exe and pick a data folder. Sets MONGOD
-rem                 and DBPATH. Checks MONGOD_EXE, then PATH, then the usual
-rem                 install locations, so it works on any machine.
-rem =====================================================================
-:find_mongod
-set "MONGOD="
-if defined MONGOD_EXE if exist "%MONGOD_EXE%" set "MONGOD=%MONGOD_EXE%"
-if not defined MONGOD for %%m in (mongod.exe) do if not "%%~$PATH:m"=="" set "MONGOD=%%~$PATH:m"
-if not defined MONGOD (
-  for %%r in (
-    "%ProgramFiles%\MongoDB"
-    "%ProgramFiles(x86)%\MongoDB"
-    "%LOCALAPPDATA%\MongoDB"
-    "%ProgramData%\MongoDB"
-    "%~dp0mongodb"
-    "C:\MongoDB" "C:\mongodb"
-    "D:\MongoDB" "D:\mongodb"
-    "E:\MongoDB" "E:\mongodb"
-    "E:\MongolDB" "E:\MongolDB"
-    "F:\MongoDB" "F:\mongodb"
-  ) do call :probe_root %%r
-)
-if not defined MONGOD exit /b 1
-set "DBPATH=%MONGOD_DATA%"
-if not defined DBPATH set "DBPATH=%~dp0.mongo-data"
-exit /b 0
-
-:probe_root
-if exist "%~1\bin\mongod.exe" if not defined MONGOD set "MONGOD=%~1\bin\mongod.exe"
-if exist "%~1\mongod.exe" if not defined MONGOD set "MONGOD=%~1\mongod.exe"
-if exist "%~1" for /f "delims=" %%f in ('dir /b /s "%~1" mongod.exe 2^>nul') do if not defined MONGOD set "MONGOD=%%f"
-exit /b 0

@@ -8,6 +8,7 @@ const Toy = require('../models/Toy');
 const Review = require('../models/Review');
 const Mod = require('../models/Mod');
 const Post = require('../models/Post');
+const mongoose = require('mongoose');
 const { decryptKey } = require('../lib/keyCrypto');
 
 const router = express.Router();
@@ -32,6 +33,23 @@ function deployedBuild() {
 router.get('/version', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ build: deployedBuild() });
+});
+
+// ---------- database gate ----------
+// Mongoose buffers queries issued before the connection is live, then throws
+// "buffering timed out" as an unhandled rejection which kills the whole
+// process. Refusing early with 503 keeps the server up and lets the client's
+// retry logic do its job while MongoDB is still coming up.
+const DB_FREE_ENDPOINTS = new Set(['/version', '/health']);
+router.use((req, res, next) => {
+  if (DB_FREE_ENDPOINTS.has(req.path)) return next();
+  const state = mongoose.connection.readyState; // 1 === connected
+  if (state === 1) return next();
+  return res.status(503).json({
+    error: state === 2 ? 'Database is connecting — retry shortly.' : 'Database is not available yet.',
+    readyState: state,
+    hint: 'MongoDB is still starting. start-website.bat waits for it automatically.',
+  });
 });
 
 const needLogin = (req, res, next) => {

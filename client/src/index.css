@@ -508,7 +508,12 @@ a.tag,.chip,.cta-btn,.ghost-btn,.install-btn,.action-btn,.icon-btn,.avatar-chip,
 .store_search input,.store_search button,.topbar a,.side-edge,.carousel_arrow button,
 input,select,textarea{border-radius:var(--radius)}
 
-/* toasts */
+/* boot screen — shown while MongoDB is still connecting */
+.boot{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s3);text-align:center}
+.boot .logo{font-size:38px;animation:bootPulse 2.2s ease-in-out infinite}
+@keyframes bootPulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* toast host */
 .toast-host{position:fixed;right:var(--s5);bottom:var(--s5);z-index:200;display:flex;
   flex-direction:column;gap:var(--s2);pointer-events:none}
 .toast{background:var(--card);border:1px solid var(--rule);border-left:2px solid var(--rule-accent);
