@@ -2,7 +2,7 @@
 
 ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + toy collectibles, dev portal with revenue, mod hub, community forums, library with playtime + keys, reviews, wishlist, shipping tracking, light/dark themes, editable profiles with address book.
 
-Steam taxonomy: genres / tags / platforms / specials mirror `store.steampowered.com/search` facets — see `lib/steamTaxonomy.js`. Live player counts + community review verdicts come from public Steam Web APIs (`lib/steamLive.js`, 10-min cache).
+Steam data (title, capsule art, genres, price, platforms, release date) comes from the Steam Store API. Live player counts and community review verdicts come from public Steam Web APIs (`lib/steamLive.js`, 10-min cache).
 
 UI: React SPA. Design tokens and the three layout families live at the top of `client/src/index.css`.
 
@@ -24,7 +24,7 @@ Figures shown in the hero ledger are counted from MongoDB on each `/api/home` re
 | `server.js` | Express: serves `/api/*` JSON + `client/dist` static with SPA fallback |
 | `routes/api.js` | All JSON endpoints (auth, games, toys, cart, checkout, orders, library, dev, reviews, users, community, mods) |
 | `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Mod`, `Post`, `Review` |
-| `seed/` | `import-steam.js` (47 real games), `seed-toys.js` (12 merch), `find-mongo.js` (mongod discovery for the launcher), `check-db.js` (catalog verification), `rotate-key-secret.js` (secret migration), test helpers |
+| `seed/` | `import-steam.js` (47 real games), `seed-toys.js` (12 merch), `seed-reviews.js` (customer reviews, grants the library entry review requires), `find-mongo.js` (mongod discovery for the launcher), `check-db.js` (catalog verification), `rotate-key-secret.js` (secret migration), `reset-demo.js`, `clear-orders.js`, test helpers |
 
 ## Run (any machine)
 

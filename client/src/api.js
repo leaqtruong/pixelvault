@@ -26,12 +26,3 @@ export async function waitForDb(path = '/stats', tries = 40, gapMs = 1500) {
 }
 
 export const priceOf = (g) => +(g.price * (1 - (g.discountPct || 0) / 100)).toFixed(2);
-
-export function verdict(avg, n) {
-  if (!n) return null;
-  if (avg >= 4.5) return 'Overwhelmingly Positive';
-  if (avg >= 4) return 'Very Positive';
-  if (avg >= 3.5) return 'Mostly Positive';
-  if (avg >= 3) return 'Mixed';
-  return 'Mostly Negative';
-}

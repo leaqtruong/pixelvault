@@ -151,10 +151,14 @@ router.get('/games/:slug', async (req, res) => {
     if (!game) return res.status(404).json({ error: 'Game not found' });
     await Game.updateOne({ _id: game._id }, { $inc: { 'stats.views': 1 } });
     const reviews = await Review.find({ game: game._id }).populate('user', 'username').sort({ createdAt: -1 }).limit(20).lean();
+    // Flag which reviews the signed-in user already found helpful, so the
+    // button can render in its "voted" state without a second request.
+    const meId = req.session.user && String(req.session.user._id);
+    if (meId) for (const r of reviews) r.helpful = (r.helpful || []).map(String);
     const mods = await Mod.find({ game: game._id, status: 'published' }).sort({ 'stats.downloads': -1 }).limit(6).lean();
     const threads = await Post.find({ game: game._id }).sort({ createdAt: -1 }).limit(5).populate('author', 'username').lean();
     const keysAvailable = await GameKey.countAvailable(game._id);
-    res.json({ game, reviews, mods, threads, keysAvailable });
+    res.json({ game, reviews, mods, threads, keysAvailable, me: meId || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -331,7 +335,6 @@ function shippingQuote(items, method) {
   return { cost: +cost.toFixed(2), weight: +weight.toFixed(2) };
 }
 
-router.get('/checkout/quote', (req, res) => res.json(shippingQuote(getCart(req), req.query.method || 'standard')));
 router.get('/checkout/summary', needLogin, async (req, res) => {
   const items = getCart(req);
   const method = req.query.method || 'standard';
@@ -442,19 +445,9 @@ router.get('/orders/:id', needLogin, async (req, res) => {
   res.json({ order, plainById: withPlainKeys(order) });
 });
 
-router.post('/orders/:id/advance', needLogin, async (req, res) => {
-  const order = await Order.findById(req.params.id);
-  if (!order || !order.shipment) return res.status(400).json({ error: 'No shipment' });
-  const flow = ['packing', 'shipped', 'in_transit', 'out_for_delivery', 'delivered'];
-  const idx = flow.indexOf(order.shipment.status);
-  if (idx < flow.length - 1) {
-    order.shipment.status = flow[idx + 1];
-    if (order.shipment.status === 'shipped') { order.shipment.shippedAt = new Date(); order.status = 'shipped'; }
-    if (order.shipment.status === 'delivered') { order.shipment.deliveredAt = new Date(); order.status = 'delivered'; }
-    await order.save();
-  }
-  res.json({ ok: true, status: order.shipment.status });
-});
+// NOTE: a POST /orders/:id/advance route used to live here to step a shipment
+// through packing -> shipped -> delivered. It had no UI, and no ownership check,
+// so any signed-in user could rewrite someone else's shipment status. Removed.
 
 // ---------- library ----------
 router.get('/library', needLogin, async (req, res) => {
@@ -509,16 +502,20 @@ router.post('/reviews/:gameId', needLogin, async (req, res) => {
 });
 
 router.post('/reviews/:id/helpful', needLogin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Review not found' });
   const r = await Review.findById(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Review not found' });
   const uid = req.session.user._id;
   if (r.helpful.map(String).includes(String(uid))) r.helpful.pull(uid); else r.helpful.push(uid);
   await r.save();
-  res.json({ ok: true, helpful: r.helpful.length });
+  // after the toggle, membership of the list IS the "voted" state
+  res.json({ ok: true, helpful: r.helpful.length, voted: r.helpful.map(String).includes(String(uid)) });
 });
 
 router.post('/reviews/:id/respond', needLogin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Review not found' });
   const r = await Review.findById(req.params.id).populate('game');
-  if (!r) return res.status(404).json({ error: 'Not found' });
+  if (!r) return res.status(404).json({ error: 'Review not found' });
   if (String(r.game.developer) !== String(req.session.user._id) && req.session.user.role !== 'admin') return res.status(403).json({ error: 'Only the developer can respond.' });
   r.devResponse = { text: req.body.text, respondedAt: new Date() };
   await r.save();

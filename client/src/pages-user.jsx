@@ -134,6 +134,67 @@ export function DevApply() {
     {msg && <p className="tiny">{msg}</p>}</div>;
 }
 
+/* Developer replies: POST /reviews/:id/respond existed but nothing in the UI
+   could reach it, so a published devResponse could never be written. */
+function DevReplies({ games, onDone }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(null);
+  const [list, setList] = useState([]);
+  const loadFor = async (gid) => {
+    try { const r = await api('/games/' + gid); setList(r.reviews || []); }
+    catch { setList([]); }
+  };
+  const openFor = (gid) => {
+    setOpen(open === gid ? null : gid);
+    if (open !== gid) loadFor(gid);
+  };
+  const send = async (e, rid) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    try {
+      await api(`/reviews/${rid}/respond`, { method: 'POST', body: { text: f.get('text') } });
+      e.target.reset();
+      toast('Reply published');
+      loadFor(open);
+      onDone && onDone();
+    } catch (er) { toast(er.message, 'err'); }
+  };
+  const withReviews = games.filter((g) => (g.stats.reviewCount || 0) > 0);
+  if (!withReviews.length) return null;
+  return (
+    <div className="panel">
+      <h3>Customer replies ({withReviews.length} title{withReviews.length > 1 ? 's' : ''} with reviews)</h3>
+      {withReviews.map((g) => (
+        <div key={g._id} style={{ marginBottom: 12 }}>
+          <p style={{ margin: '0 0 6px' }}>
+            <Link to={`/games/${g.slug}`}>{g.title}</Link>
+            <span className="tiny"> · {g.stats.reviewCount} reviews · {g.stats.reviewCount ? (g.stats.reviewSum / g.stats.reviewCount).toFixed(1) : '0'}/5</span>
+            <button className="ghost-btn sm" onClick={() => openFor(g._id)}>
+              {open === g._id ? 'Close' : 'Reply'}
+            </button>
+          </p>
+          {open === g._id && (
+            <div>
+              {!list.length && <p className="tiny">Loading reviews…</p>}
+              {list.map((r) => (
+                <div key={r._id} className="devresp" style={{ marginBottom: 8 }}>
+                  <b>{r.title}</b> <span className="tiny">by @{r.user?.username} · {r.stars}/5</span>
+                  <p style={{ margin: '4px 0', fontSize: 12 }}>{r.body}</p>
+                  {r.devResponse?.text && <p className="tiny" style={{ color: 'var(--accent)' }}>You replied: {r.devResponse.text}</p>}
+                  <form onSubmit={(e) => send(e, r._id)} style={{ display: 'grid', gap: 6, marginTop: 6 }}>
+                    <textarea name="text" placeholder="Reply as the developer…" defaultValue={r.devResponse?.text || ''} style={{ minHeight: 62 }} required />
+                    <button className="cta-btn sm" style={{ justifySelf: 'start' }}>Publish reply</button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Dev() {
   const [d, setD] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -198,6 +259,7 @@ export function Dev() {
         </tbody></table> : <p className="muted">No shipped orders yet.</p>}
       </div>
     </div>
+    <DevReplies games={d.games} onDone={load} />
     <div className="panel">
       <h3>Your titles ({d.games.length})</h3>
       {d.games.length ? (

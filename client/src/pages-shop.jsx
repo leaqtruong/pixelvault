@@ -273,6 +273,8 @@ export function GameDetail({ me }) {
   const [live, setLive] = useState(null);
   const [news, setNews] = useState([]);
   const [rel, setRel] = useState([]);
+  const [voted, setVoted] = useState(() => new Set());
+  const [votes, setVotes] = useState({});
   const [err, setErr] = useState('');
   const [shot, setShot] = useState(0);
   const toast = useToast();
@@ -313,6 +315,14 @@ export function GameDetail({ me }) {
       e.target.reset();
       toast('Review posted');
       setD(await api('/games/' + slug));
+    } catch (er) { toast(er.message, 'err'); }
+  };
+  const voteHelpful = async (r) => {
+    if (!me) return;
+    try {
+      const res = await api(`/reviews/${r._id}/helpful`, { method: 'POST' });
+      setVotes((v) => ({ ...v, [r._id]: res.helpful }));
+      setVoted((v) => { const n = new Set(v); res.voted ? n.add(r._id) : n.delete(r._id); return n; });
     } catch (er) { toast(er.message, 'err'); }
   };
   return (
@@ -410,6 +420,15 @@ export function GameDetail({ me }) {
                   <p className="tiny">@{r.user?.username} · {r.playMinutesAtReview} min on record · {r.stars}/5</p>
                   <p style={{ fontSize: 13 }}>{r.body}</p>
                   {r.devResponse?.text && <p className="devresp"><b>Developer response:</b> {r.devResponse.text}</p>}
+                  <div className="review_foot">
+                    <button
+                      className={'helpful-btn' + (voted.has(r._id) ? ' on' : '')}
+                      disabled={!me}
+                      title={me ? 'Mark this review as helpful' : 'Log in to vote'}
+                      onClick={() => voteHelpful(r)}>
+                      Helpful · {votes[r._id] ?? (r.helpful || []).length}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

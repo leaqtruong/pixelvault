@@ -19,8 +19,8 @@
      the substrate â€” it appears on roughly one element per screen. */
   --bg0:#0a0a0b; --bg1:#121214; --card:#181819; --card-hi:#202023; --card-2:#101012;
   --ink:#d9d5cf; --bright:#f5f3ef; --dim:#97918a; --faint:#6a655f;
-  --accent:#e0a03c; --ember:#c04a33; --bronze:#9d7f58; --green:#7d9a52; --green-bg:#1e2118;
-  --price-bg:#1b1b1d; --red:#c04a33; --amber:#e0a03c;
+  --accent:#e0a03c; --ember:#c04a33; --bronze:#9d7f58; --green:#7d9a52;
+  --price-bg:#1b1b1d;
   --radius:2px; --field:#1d1d1f;
   /* structural hairlines are neutral; accent rules are amber */
   --rule:rgba(255,255,255,.085); --rule-soft:rgba(255,255,255,.045); --rule-hard:rgba(255,255,255,.17);
@@ -35,8 +35,7 @@
   --bg0:#e4e0d8; --bg1:#f2efe8; --card:#fcfbf8; --card-hi:#f4f1ea; --card-2:#e9e5dc;
   --ink:#3a3833; --bright:#141311; --dim:#78736b; --faint:#9d968c;
   --accent:#8a5a12; --ember:#a53c22; --bronze:#7d6642;
-  --green:#4f6b2a; --green-bg:#e7ecd8; --price-bg:#eeeae1;
-  --red:#a53c22; --amber:#8a5a12;
+  --green:#4f6b2a; --price-bg:#eeeae1;
   --field:#ffffff; --rule:rgba(20,18,14,.12); --rule-soft:rgba(20,18,14,.06); --rule-hard:rgba(20,18,14,.24);
   --rule-accent:rgba(138,90,18,.45); --rule-accent-soft:rgba(138,90,18,.14);
 }
@@ -421,6 +420,13 @@ a.tag:hover{border-color:var(--rule-accent);color:var(--accent)}
   border-left:2px solid var(--bronze);padding:var(--s3);margin:9px 0}
 .avatar{width:44px;height:44px;background:var(--card-hi);border:1px solid var(--rule-hard);
   display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:var(--ink)}
+.review_foot{display:flex;gap:var(--s2);align-items:center;margin-top:var(--s2)}
+.helpful-btn{background:transparent;border:1px solid var(--rule);color:var(--dim);
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:5px 11px;cursor:pointer;font-family:inherit;transition:color .14s,border-color .14s}
+.helpful-btn:hover:not([disabled]){color:var(--accent);border-color:var(--rule-accent)}
+.helpful-btn.on{color:var(--accent);border-color:var(--rule-accent)}
+.helpful-btn[disabled]{opacity:.4;cursor:not-allowed}
 .game_title_row{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap}
 .hub-btn{margin-left:auto}
 
