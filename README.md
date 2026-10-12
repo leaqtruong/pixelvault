@@ -19,6 +19,7 @@ Steam data (title, capsule art, genres, price, platforms, release date) comes fr
 | Cover and hero art | Steam CDN, largest asset that exists for that appid |
 | Feature categories | Steam `categories`, filtered to the ones a buyer filters on |
 | Player counts, review verdicts, news | Steam Web API, cached 10 minutes |
+| Mod titles, descriptions, tags, file sizes, subscriber/favourite/view/vote counts, star ratings, author names | Steam Workshop (`steamcommunity.com/workshop/browse/`), mirrored by `seed/import-workshop.js` |
 | Ledger counts, stock, order totals, revenue | Counted from MongoDB on request |
 | Shipping cost | **Sample rates** from `.env` — labelled as such on the checkout screen, not a carrier tariff |
 | Tax rate | `TAX_RATE` from `.env` |
@@ -180,6 +181,43 @@ Demo keys are fake `DEMO-XXXXX-XXXXX-XXXXX` placeholders encrypted with AES-256-
 - Tax 8%. Tracking `PV-<base36><rand>`. Status flow: packing → shipped → in_transit → out_for_delivery → delivered.
 - Dev cut 70% credited to `devProfile.balanceOwed` per order item; payout resets at $10 min.
 
-## MongoDB collections
+## Mods: mirrored from the Steam Workshop, with the source recorded
 
-`users` (game library + toyLibrary, wishlists, addresses, playHistory), `games` (genres/tags/platforms/features Steam-style + digital + physical subdoc, stats.keysAvailable), `toys` (standalone merch: brand, category, price, stock), `gamekeys` (codeEnc AES-256-GCM, codeHash unique, status, order, user), `orders` (items.kind game/toy, keyIds, shipment, devPayouts), `mods`, `posts` (replies embedded), `reviews`.
+The Workshop page is not fiction and nothing here was written by hand. Mods are mirrored from Valve's public Steam Workshop, and **every row records where it came from and when**:
+
+| Field | Meaning | Source |
+|---|---|---|
+| `source.provider` | `steam-workshop` (absent for PixelVault uploads) | — |
+| `source.id` | the Workshop `publishedfileid` | Steam |
+| `source.url` | `https://steamcommunity.com/sharedfiles/filedetails/?id=…` | constructed from the id |
+| `source.author` | the author's public Steam name | breadcrumb on the item's own page |
+| `source.authorId` | `steamid64`, exactly as Steam reports it | Steam |
+| `source.gameUrl` | the Workshop page of the parent game | constructed from the game's appid |
+| `source.retrievedAt` | when this row was mirrored | this importer |
+| `mirror.subscriptions` / `favorites` / `views` / `votes` / `rating` / `comments` | Steam's own counts | Steam |
+| `mirror.fileSize` | bytes, as Steam reports it | Steam |
+| `mirror.createdAt` / `updatedAt` | Steam's timestamps | Steam |
+
+`version` is deliberately **unset** for mirrored mods — Steam publishes no version string for a Workshop item, and a made-up `1.0.0` would look like a real fact. The detail page says so instead. PixelVault does not host any mod files; the download button links back to Steam.
+
+Only the 21 catalog titles that actually publish Workshop content are eligible. The other 53 have none, and the importer records that rather than inventing entries — Terraria alone publishes 150,859 items, Garry's Mod 1,991,172.
+
+```
+node seed/import-workshop.js                  dry run, browse phase only
+node seed/import-workshop.js --apply          write mods to MongoDB
+node seed/import-workshop.js --apply --pages 3
+node seed/import-workshop.js --apply --authors --limit 200
+node seed/workshop-status.js                  what has been mirrored so far
+```
+
+`--apply` upserts on the Workshop item id, so running it repeatedly only adds what is missing and refreshes the Steam counts on rows it already has. Author names are never overwritten once resolved.
+
+Importing is split into two phases on purpose. Steam answers `HTTP 429` under load, so the browse phase makes only a handful of requests, and the author-name lookup runs separately at a slower pace and skips rows that already have a name — interrupt it and re-run, and it continues where it stopped. A unique index on `('source.provider', 'source.id')` makes re-imports idempotent.
+
+The importer never reports a game it could not reach as a game with no Workshop. A throttled request, an unreachable host and a genuine absence are three different outcomes, and collapsing them would quietly shrink the catalog while reporting success. Failures are listed by name so a re-run can pick them up.
+
+**Networking note.** On some networks every Steam hostname resolves to `127.0.0.1` (seen on a machine in Vietnam using `8.8.8.8`, while GitHub, npm and the Nexus API resolve normally), and on others the TLS connection to Steam's real addresses is reset outright. `lib/steamFetch.js` handles the first case: when plain `fetch` fails for a Steam host, it resolves the hostname over DNS-over-HTTPS and connects straight to the returned address, keeping the original `Host` header and TLS SNI. It tries ordinary `fetch` first on purpose — the workaround only engages when the normal path fails. If Steam is blocked at the TCP/TLS layer as well, no client-side change helps; the importer reports `unreachable (ECONNRESET…)` and the affected games, and re-running later resumes exactly where it stopped.
+
+Other sources were evaluated and rejected: the Nexus Mods API answers `401` and its site `403` without credentials, and CurseForge's API returns `403: API Key missing or invalid`. Steam's own `ISteamRemoteStorage/GetPublishedFileDetails` needs an API key to be useful. The Workshop browse page is public, needs no key, and ships the data as server-rendered JSON.
+
+`users` (game library + toyLibrary, wishlists, addresses, playHistory), `games` (genres/tags/platforms/features Steam-style + digital + physical subdoc, stats.keysAvailable), `toys` (standalone merch: brand, category, price, stock), `gamekeys` (codeEnc AES-256-GCM, codeHash unique, status, order, user), `orders` (items.kind game/toy, keyIds, shipment, devPayouts), `mods` (`source` provenance + `mirror` Steam figures for Workshop entries), `posts` (replies embedded), `reviews`.

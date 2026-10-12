@@ -779,12 +779,28 @@ router.post('/community/p/:id/reply', needLogin, async (req, res) => {
 });
 
 router.get('/mods', async (req, res) => {
-  const mods = await Mod.find({ status: 'published', ...(req.query.game ? { game: req.query.game } : {}) }).populate('author', 'username').sort({ 'stats.downloads': -1 }).limit(30).lean();
+  const filter = { status: 'published' };
+  if (req.query.game) filter.game = req.query.game;
+  // 'steam' restricts to mirrored entries, 'local' to PixelVault uploads
+  if (req.query.source === 'steam') filter['source.provider'] = 'steam-workshop';
+  if (req.query.source === 'local') filter['source.provider'] = { $exists: false };
+
+  const sort = req.query.sort === 'new' ? { 'mirror.updatedAt': -1, createdAt: -1 }
+    : req.query.sort === 'size' ? { 'mirror.fileSize': -1 }
+      : { 'mirror.subscriptions': -1, createdAt: -1 };
+
+  const mods = await Mod.find(filter)
+    .populate('author', 'username')
+    .populate('game', 'title slug coverImage steamAppId')
+    .sort(sort).limit(Number(req.query.limit) || 60).lean();
   res.json({ mods });
 });
 
 router.get('/mods/:id', async (req, res) => {
-  const mod = await Mod.findById(req.params.id).populate('author', 'username').populate('game', 'title slug').lean();
+  const mod = await Mod.findById(req.params.id)
+    .populate('author', 'username')
+    .populate('game', 'title slug coverImage steamAppId')
+    .lean();
   if (!mod) return res.status(404).json({ error: 'Not found' });
   res.json({ mod });
 });
@@ -800,7 +816,8 @@ router.post('/mods/new', needLogin, async (req, res) => {
   const m = await Mod.create({
     game, title: String(title).slice(0, 120), tagline: String(tagline || '').slice(0, 200),
     description: String(description || '').slice(0, 4000), author: req.session.user._id,
-    version: version || '1.0.0', downloadUrl: downloadUrl || '',
+    // left unset when the uploader does not supply one — no placeholder version
+    version: String(version || '').trim() || undefined, downloadUrl: downloadUrl || '',
     tags: Array.isArray(tags) ? tags : String(tags || '').split(',').map((s) => s.trim()).filter(Boolean),
     status: 'published',
   });
