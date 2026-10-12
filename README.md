@@ -10,6 +10,21 @@ Steam data (title, capsule art, genres, price, platforms, release date) comes fr
 
 **Cover art** — the Store API's `header_image` is a 460×215 banner, which renders soft in the card grid on a hi-dpi screen. `seed/steamArt.js` probes for the larger assets Steam publishes (`library_600x900_2x` at 600×900 for portraits, `library_hero` at 1920×620 for the wide hero) and falls back through a chain, keeping the original banner only for the two titles that have nothing else.
 
+**Where the numbers come from.** Nothing on the storefront is invented:
+
+| Shown | Source |
+|---|---|
+| Title, studio, genres, price, discount, release date, platform list | Steam Store API |
+| System requirements (minimum + recommended, per OS) | Steam `pc_requirements` / `mac_requirements` / `linux_requirements` |
+| Cover and hero art | Steam CDN, largest asset that exists for that appid |
+| Feature categories | Steam `categories`, filtered to the ones a buyer filters on |
+| Player counts, review verdicts, news | Steam Web API, cached 10 minutes |
+| Ledger counts, stock, order totals, revenue | Counted from MongoDB on request |
+| Shipping cost | **Sample rates** from `.env` — labelled as such on the checkout screen, not a carrier tariff |
+| Tax rate | `TAX_RATE` from `.env` |
+
+Where Steam publishes nothing, the field stays unset and the UI says so rather than showing a plausible-looking placeholder. Install size, version string and ESRB rating are not available from the API, so they are never invented — a fabricated rating would also silently defeat the "hide mature titles" preference, which reads that field.
+
 **Store filters** are built from what the catalog actually contains: genres, Steam feature categories (Single-player, Co-op, Steam Achievements, Steam Workshop, VR Supported…), platforms, price bands and five sort orders.
 
 UI: React SPA. Design tokens and the three layout families live at the top of `client/src/index.css`.
@@ -32,7 +47,9 @@ Figures shown in the hero ledger are counted from MongoDB on each `/api/home` re
 | `server.js` | Express: serves `/api/*` JSON + `client/dist` static with SPA fallback |
 | `routes/api.js` | All JSON endpoints (auth, games, toys, cart, checkout, orders, library, dev, reviews, users, community, mods) |
 | `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Mod`, `Post`, `Review` |
-| `seed/` | `import-steam.js` (full reseed of the baseline catalog), `import-more.js` (adds missing appids, `--rebuild` restores a wiped catalog), `enrich-steam.js` (real system requirements, publishers, languages, Steam categories), `steamArt.js` / `steamReq.js` / `seed-reviews.js` / `seed-toys.js` / `block-titles.js` / `prune-catalog.js` / `find-mongo.js` (mongod discovery) / `check-db.js` (catalog verification) / `rotate-key-secret.js` (secret migration) / `reset-demo.js`, `clear-orders.js` |
+| `seed/` | `import-steam.js` (full reseed of the baseline catalog), `import-more.js` (adds missing appids, `--rebuild` restores a wiped catalog), `enrich-steam.js` (real system requirements, publishers, languages, Steam categories), `upgrade-covers.js` (high-res art pass), `strip-invented-data.js` (clears placeholder fields written by older imports), `steamArt.js` / `steamReq.js` / `seed-reviews.js` / `seed-toys.js` / `block-titles.js` / `prune-catalog.js` / `find-mongo.js` (mongod discovery) / `check-db.js` (catalog verification) / `rotate-key-secret.js` (secret migration) / `reset-demo.js`, `clear-orders.js` |
+
+`npm run seed` chains the real importers. There is no longer a seeder that fabricates a fictional catalog — an earlier `seed/seed.js` invented titles, prices and install sizes and was wired to that script; it was removed rather than kept as a trap.
 
 ## Run (any machine)
 

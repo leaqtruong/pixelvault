@@ -92,12 +92,14 @@ function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
 
           {me && (
             <div className="rail-sec">
-              <h3>Content filter</h3>
+              <h3>Age filter</h3>
               <button className={'ghost-btn sm' + (mature ? ' current' : '')} onClick={flipMature}>
-                {mature ? 'Mature shown' : 'Mature hidden'}
+                {mature ? 'Showing all' : 'Hide M and AO'}
               </button>
               <p className="tiny" style={{ marginTop: 8, marginBottom: 0 }}>
-                {mature ? 'Mature titles are visible in the catalog.' : 'Mature titles are hidden from browsing.'}
+                Only titles a developer has rated M or AO are hidden. Titles mirrored
+                from the Steam Store carry no age rating, so this does not change the
+                imported catalog.
               </p>
             </div>
           )}

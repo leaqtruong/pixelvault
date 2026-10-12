@@ -327,26 +327,43 @@ router.post('/cart/qty', (req, res) => {
 // ---------- checkout & orders ----------
 const TAX_RATE = Number(process.env.TAX_RATE || 0.08);
 const DEV_CUT = Number(process.env.DEV_REVENUE_CUT || 0.7);
+/* Shipping rates are demo pricing, not a real carrier tariff. They are read
+   from .env so they are configuration rather than numbers hidden in code, and
+   the checkout screen labels them as sample rates. Weight comes from the
+   item, never invented. */
+const SHIPPING = {
+  standard: { base: Number(process.env.SHIPP_STANDARD || 4.99), perLb: Number(process.env.SHIPP_PER_LB || 0.5), freeOver: Number(process.env.SHIPP_FREE_OVER || 75) },
+  express: { base: Number(process.env.SHIPP_EXPRESS || 14.99), perLb: Number(process.env.SHIPP_EXPRESS_PER_LB || 1.2) },
+  overnight: { base: Number(process.env.SHIPP_OVERNIGHT || 29.99), perLb: Number(process.env.SHIPP_OVERNIGHT_PER_LB || 1.8) },
+};
+
 function shippingQuote(items, method) {
   const weight = items.reduce((s, i) => s + (i.weightLb || 0) * i.qty, 0);
   const hasPhysical = items.some((i) => i.edition === 'physical' || (i.kind || 'game') === 'toy');
-  if (!hasPhysical) return { cost: 0, weight };
-  const subtotal = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
-  let cost = 0;
-  if (method === 'standard') cost = subtotal > 75 ? 0 : 4.99 + weight * 0.5;
-  if (method === 'express') cost = 14.99 + weight * 1.2;
-  if (method === 'overnight') cost = 29.99 + weight * 1.8;
-  return { cost: +cost.toFixed(2), weight: +weight.toFixed(2) };
+  if (!hasPhysical) return { cost: 0, weight, rate: 'digital delivery — no shipping' };
+  const subtotal = items.reduce((s, i) => s + (i.unitPrice || 0) * i.qty, 0);
+  const rate = SHIPPING[method] || SHIPPING.standard;
+  let cost;
+  let label;
+  if (method === 'standard' && rate.freeOver && subtotal > rate.freeOver) {
+    cost = 0;
+    label = `free over $${rate.freeOver.toFixed(2)}`;
+  } else {
+    cost = rate.base + weight * rate.perLb;
+    label = `$${rate.base.toFixed(2)} + $${rate.perLb.toFixed(2)}/lb`;
+  }
+  return { cost: +cost.toFixed(2), weight: +weight.toFixed(2), rate: label, sampleRate: true };
 }
 
 router.get('/checkout/summary', needLogin, async (req, res) => {
   const items = getCart(req);
   const method = req.query.method || 'standard';
-  const { cost } = shippingQuote(items, method);
-  const subtotal = +items.reduce((s, i) => s + i.unitPrice * i.qty, 0).toFixed(2);
+  const quote = shippingQuote(items, method);
+  const cost = quote.cost;
+  const subtotal = +items.reduce((s, i) => s + (i.unitPrice || 0) * i.qty, 0).toFixed(2);
   const tax = +(subtotal * TAX_RATE).toFixed(2);
   const user = await User.findById(req.session.user._id).lean();
-  res.json({ items, subtotal, tax, shipCost: cost, grand: +(subtotal + tax + cost).toFixed(2), method, addresses: user.addresses || [] });
+  res.json({ items, subtotal, tax, shipCost: cost, grand: +(subtotal + tax + cost).toFixed(2), method, quote, taxRate: TAX_RATE, addresses: user.addresses || [] });
 });
 
 router.post('/checkout/place', needLogin, async (req, res) => {
@@ -610,9 +627,14 @@ router.post('/dev/new', needDev, async (req, res) => {
       features: Array.isArray(b.features) ? b.features : String(b.features || '').split(',').map((s) => s.trim()).filter(Boolean),
       coverImage: b.coverImage, screenshots: b.screenshots || [],
       price: Number(b.price), discountPct: Number(b.discountPct || 0),
-      fileSizeGB: Number(b.fileSizeGB || 5), version: b.version || '1.0.0',
-      physical: { enabled: !!b.physicalEnabled, price: Number(b.physicalPrice || 0), stock: Number(b.physicalStock || 0), weightLb: Number(b.weightLb || 0.5), warehouse: b.warehouse || 'US-EAST', includes: b.physicalIncludes || [] },
-      rating: b.rating || 'E', status: 'published', releaseDate: b.releaseDate ? new Date(b.releaseDate) : new Date(),
+      // Optional metadata is stored only when the developer supplies it.
+      // Defaulting these to plausible numbers would put invented data on a
+      // storefront, and a defaulted rating would silently no-op the
+      // "hide mature titles" preference that reads this field.
+      fileSizeGB: b.fileSizeGB === '' || b.fileSizeGB === undefined ? undefined : Number(b.fileSizeGB),
+      version: b.version || undefined,
+      physical: { enabled: !!b.physicalEnabled, price: Number(b.physicalPrice || 0), stock: Number(b.physicalStock || 0), weightLb: Number(b.weightLb || 0), warehouse: b.warehouse || '', includes: b.physicalIncludes || [] },
+      rating: b.rating || undefined, status: 'published', releaseDate: b.releaseDate ? new Date(b.releaseDate) : new Date(),
     });
     res.json({ ok: true, slug: game.slug });
   } catch (e) { res.status(400).json({ error: e.message }); }

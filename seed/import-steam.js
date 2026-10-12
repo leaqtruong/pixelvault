@@ -53,8 +53,9 @@ function mapGame(appid, d, i, art = {}) {
   if (d.platforms?.mac) platforms.push('Mac');
   if (d.platforms?.linux) platforms.push('Linux');
   if (!platforms.length) platforms.push('Windows');
-  const price = d.is_free ? 0 : (d.price_overview ? d.price_overview.final / 100 : 19.99);
-  const discount = d.is_free ? 0 : (d.price_overview?.discount_percent || 0);
+  const price = d.is_free ? 0
+    : (d.price_overview && Number.isFinite(d.price_overview.final) ? d.price_overview.final / 100 : null);
+  const discount = d.is_free ? 0 : ((d.price_overview && d.price_overview.discount_percent) || 0);
   const shots = [art.hero, ...((d.screenshots || []).slice(0, 3).map((s) => s.path_full))].filter(Boolean);
   return {
     title: d.name,
@@ -69,11 +70,14 @@ function mapGame(appid, d, i, art = {}) {
     screenshots: shots,
     price, discountPct: discount,
     digitalSku: `PV-STEAM-${appid}`,
-    fileSizeGB: 5 + (appid % 40),
-    version: '1.0.0',
-    physical: { enabled: false, price: 0, stock: 0, weightLb: 0.6, warehouse: 'US-EAST', includes: [] },
-    systemReq: { os: 'Windows 10 64-bit', cpu: 'Quad-core 3.0 GHz', ram: '8 GB RAM', gpu: 'GTX 1060', storage: '20 GB available space' },
-    rating: 'T',
+    // The Store API publishes no install size, version string or ESRB rating.
+    // Leaving them unset keeps the UI honest; a fabricated rating would also
+    // silently break the "hide mature titles" preference, which reads it.
+    fileSizeGB: undefined,
+    version: undefined,
+    physical: { enabled: false, price: 0, stock: 0, weightLb: 0, warehouse: '', includes: [] },
+    systemReq: {},
+    rating: undefined,
     status: 'published',
     featured: [105600, 1973530, 632360, 367520, 730].includes(appid),
     releaseDate: d.release_date?.date ? new Date(d.release_date.date) : new Date(Date.now() - i * 86400000 * 30),

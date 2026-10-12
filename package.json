@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "seed": "node seed/seed.js",
+    "seed": "node seed/import-steam.js && node seed/seed-toys.js && node seed/seed-reviews.js",
     "client": "npm run dev --prefix client",
     "build:client": "npm run build --prefix client"
   },

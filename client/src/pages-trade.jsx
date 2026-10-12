@@ -100,7 +100,15 @@ export function Checkout() {
       <div className="two-col"><div className="panel">
         <form onSubmit={place}>
           <h3>1 · Shipping method</h3>
-          {['standard', 'express', 'overnight'].map((m) => <label key={m} style={{ display: 'block' }}><input type="radio" checked={method === m} onChange={() => setMethod(m)} /> {m}</label>)}
+          {['standard', 'express', 'overnight'].map((m) => (
+            <label key={m} style={{ display: 'block' }}>
+              <input type="radio" checked={method === m} onChange={() => setMethod(m)} /> {m}
+            </label>
+          ))}
+          <p className="tiny" style={{ marginTop: 8 }}>
+            Rates are sample prices for this coursework build, set in <code>.env</code>
+            {d.quote && d.quote.rate ? ` — ${method} is currently ${d.quote.rate}` : ''}.
+          </p>
           <h3>2 · Ship to</h3>
           <input name="fullName" placeholder="Full name" defaultValue={addr.fullName} required />
           <input name="street" placeholder="Street" defaultValue={addr.street} required />
@@ -114,6 +122,9 @@ export function Checkout() {
         <div className="panel"><h3>Order summary</h3>
           {d.items.map((i) => <p key={i.key}>{i.qty}× {i.title} — ${(i.unitPrice * i.qty).toFixed(2)}</p>)}
           <hr /><p>Subtotal: ${d.subtotal.toFixed(2)}</p><p>Tax: ${d.tax.toFixed(2)}</p><p>Shipping: ${d.shipCost.toFixed(2)}</p><h3>Total: ${d.grand.toFixed(2)}</h3>
+          {d.quote && d.quote.sampleRate && (
+            <p className="tiny">Shipping is a sample rate, not a carrier tariff. {d.quote.weight} lb billed at {d.quote.rate}.</p>
+          )}
         </div>
       </div>
     </>

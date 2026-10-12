@@ -89,28 +89,38 @@ function mapGame(appid, d, art, devId) {
   if (d.platforms?.linux) platforms.push('Linux');
   if (!platforms.length) platforms.push('Windows');
 
+  /* Only real values are stored. The Store API publishes no install size, no
+     version string and no ESRB rating, so those fields are left unset rather
+     than filled with a plausible-looking number — the UI renders "not
+     published" instead. A fabricated rating would also silently break the
+     "hide mature titles" preference, which filters on this field. */
+  const price = d.is_free ? 0
+    : (d.price_overview && Number.isFinite(d.price_overview.final) ? d.price_overview.final / 100 : null);
+  const discount = d.is_free ? 0 : ((d.price_overview && d.price_overview.discount_percent) || 0);
+
   return {
     title: d.name,
     tagline: (d.short_description || '').slice(0, 160),
     description: `${d.short_description || d.name}\n\nReal store metadata (name, capsule art, genres, price) mirrored from the Steam Store API for coursework illustration. Demo keys sold here are fake DEMO-XXXXX placeholders, not real Steam keys.`,
-    studioName: (d.developers && d.developers[0]) || 'Various',
+    studioName: (d.developers && d.developers[0]) || 'Unknown studio',
     genres: genres.length ? genres : ['Indie'],
     tags: [...new Set([...genres, ...cats.filter((c) => c.length < 24)])].slice(0, 6),
     platforms,
     features: cats,
     coverImage: art.cover,
     screenshots: [art.hero, ...((d.screenshots || []).slice(0, 3).map((s) => s.path_full))].filter(Boolean),
-    price: d.is_free ? 0 : (d.price_overview ? d.price_overview.final / 100 : 19.99),
-    discountPct: d.is_free ? 0 : (d.price_overview?.discount_percent || 0),
+    price,
+    discountPct: discount,
     digitalSku: `PV-STEAM-${appid}`,
-    fileSizeGB: 5 + (appid % 40),
-    version: '1.0.0',
-    physical: { enabled: false, price: 0, stock: 0, weightLb: 0.6, warehouse: 'US-EAST', includes: [] },
-    systemReq: { os: 'Windows 10 64-bit', cpu: 'Quad-core 3.0 GHz', ram: '8 GB RAM', gpu: 'GTX 1060', storage: '20 GB available space' },
-    rating: 'T',
+    // Steam publishes neither of these; leave them unset.
+    fileSizeGB: undefined,
+    version: undefined,
+    physical: { enabled: false, price: 0, stock: 0, weightLb: 0, warehouse: '', includes: [] },
+    systemReq: {},
+    rating: undefined,
     status: 'published',
     featured: false,
-    releaseDate: d.release_date?.date ? new Date(d.release_date.date) : new Date(),
+    releaseDate: d.release_date && d.release_date.date ? new Date(d.release_date.date) : undefined,
     modSupport: true,
     steamAppId: appid,
     developer: devId,
