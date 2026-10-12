@@ -139,9 +139,14 @@ router.get('/games', async (req, res) => {
     };
     games.sort(sorts[sort] || sorts.popular);
     const { items, total, totalPages, page: pg, limit: lim } = paginate(games, page, limit);
-    const genres = await Game.distinct('genres', { status: 'published', productType: { $ne: 'toy' } });
-    const tags = await Game.distinct('tags', { status: 'published', productType: { $ne: 'toy' } });
-    res.json({ games: items, total, totalPages, page: pg, limit: lim, genres, tags });
+    const scope = { status: 'published', productType: { $ne: 'toy' } };
+    const [genres, tags, categories, languages] = await Promise.all([
+      Game.distinct('genres', scope),
+      Game.distinct('tags', scope),
+      Game.distinct('categories', scope),
+      Game.distinct('platforms', scope),
+    ]);
+    res.json({ games: items, total, totalPages, page: pg, limit: lim, genres, tags, categories, platforms: languages });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -246,7 +251,6 @@ router.get('/home', async (req, res) => {
       onSale: dealsAgg,
       keys: keysAgg[0]?.n || 0,
       orders: orderAgg,
-      avgOff: deals.length ? Math.round(deals.reduce((s, g) => s + (g.discountPct || 0), 0) / deals.length) : 0,
     };
     res.json({ featured, deals, fresh, threads, toys, catTiles, ledger });
   } catch (e) { res.status(500).json({ error: e.message }); }

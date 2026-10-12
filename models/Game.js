@@ -42,8 +42,20 @@ const gameSchema = new mongoose.Schema({
     includes: [String]
   },
   systemReq: {
-    os: String, cpu: String, ram: String, gpu: String, storage: String
+    os: String, cpu: String, ram: String, gpu: String, storage: String,
+    // real values mirrored from the Steam Store, keyed by platform
+    // ("Windows" / "Mac" / "Linux") -> "Windows 10 · i5-750 · 8 GB · 1 GB VRAM"
+    minimum: { type: Map, of: String, default: {} },
+    recommended: { type: Map, of: String, default: {} },
+    // the individual spec lines, so the detail page can list them verbatim
+    lines: { type: Map, of: [String], default: {} },
+    source: { type: String, default: '' },
   },
+  publisher: { type: String, default: '' },
+  languages: { type: Number, default: 0 },
+  contentWarnings: { type: [String], default: [] },
+  categories: { type: [String], default: [] },
+  deckVerified: { type: String, default: '' },
   rating: { type: String, enum: ['E', 'E10+', 'T', 'M', 'AO'], default: 'E' },
   status: { type: String, enum: ['draft', 'pending', 'published', 'rejected', 'delisted'], default: 'pending', index: true },
   featured: { type: Boolean, default: false },

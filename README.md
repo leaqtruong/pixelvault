@@ -4,6 +4,14 @@ ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + 
 
 Steam data (title, capsule art, genres, price, platforms, release date) comes from the Steam Store API. Live player counts and community review verdicts come from public Steam Web APIs (`lib/steamLive.js`, 10-min cache).
 
+**Catalog** — 74 titles, grown from four batches of appids. Titles that should not be listed are filtered out at import: demos, DLC, playtests, videos, episodes, hardware and unreleased entries are all rejected from the Store API's own `type` and `release_date` fields. One caveat is documented in `seed/block-titles.js`: `content_descriptors.ids` comes back from this endpoint as empty objects, so the mature-content flags cannot be read programmatically and that list is curated by hand.
+
+**System requirements** are mirrored per title from `pc_requirements` / `mac_requirements` / `linux_requirements`, minimum and recommended, parsed by `seed/steamReq.js`. The catalog no longer invents a "GTX 1060 / 8 GB RAM" line for every game. The detail page renders it as a platform table with the verbatim spec lines behind a disclosure.
+
+**Cover art** — the Store API's `header_image` is a 460×215 banner, which renders soft in the card grid on a hi-dpi screen. `seed/steamArt.js` probes for the larger assets Steam publishes (`library_600x900_2x` at 600×900 for portraits, `library_hero` at 1920×620 for the wide hero) and falls back through a chain, keeping the original banner only for the two titles that have nothing else.
+
+**Store filters** are built from what the catalog actually contains: genres, Steam feature categories (Single-player, Co-op, Steam Achievements, Steam Workshop, VR Supported…), platforms, price bands and five sort orders.
+
 UI: React SPA. Design tokens and the three layout families live at the top of `client/src/index.css`.
 
 | Family | Pages | Structure |
@@ -24,7 +32,7 @@ Figures shown in the hero ledger are counted from MongoDB on each `/api/home` re
 | `server.js` | Express: serves `/api/*` JSON + `client/dist` static with SPA fallback |
 | `routes/api.js` | All JSON endpoints (auth, games, toys, cart, checkout, orders, library, dev, reviews, users, community, mods) |
 | `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Mod`, `Post`, `Review` |
-| `seed/` | `import-steam.js` (47 real games), `seed-toys.js` (12 merch), `seed-reviews.js` (customer reviews, grants the library entry review requires), `find-mongo.js` (mongod discovery for the launcher), `check-db.js` (catalog verification), `rotate-key-secret.js` (secret migration), `reset-demo.js`, `clear-orders.js`, test helpers |
+| `seed/` | `import-steam.js` (full reseed of the baseline catalog), `import-more.js` (adds missing appids, `--rebuild` restores a wiped catalog), `enrich-steam.js` (real system requirements, publishers, languages, Steam categories), `steamArt.js` / `steamReq.js` / `seed-reviews.js` / `seed-toys.js` / `block-titles.js` / `prune-catalog.js` / `find-mongo.js` (mongod discovery) / `check-db.js` (catalog verification) / `rotate-key-secret.js` (secret migration) / `reset-demo.js`, `clear-orders.js` |
 
 ## Run (any machine)
 

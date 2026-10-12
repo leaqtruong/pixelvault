@@ -11,6 +11,7 @@ const GameKey = require('../models/GameKey');
 const Mod = require('../models/Mod');
 const Post = require('../models/Post');
 const { encryptKey, hashKey, makeDemoKey } = require('../lib/keyCrypto');
+const { resolveArt } = require('./steamArt');
 
 const MONGO = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/pixelvault';
 
@@ -26,6 +27,10 @@ const APPIDS = [
   413150, 1145360, 588650, 504230, 1794680, 646570, 620, 4000,
   252490, 739630, 1966720, 2881650, 1623730, 1086940, 1245620, 1030300,
   250900, 1145350,
+  // batch 3 — same taste: co-op, horror, roguelike, strategy, survival
+  275850, 418530, 457140, 505710, 588650, 728350, 847180, 1149640,
+  1292470, 1338580, 1423040, 1506980, 1575940, 1966720, 2050650, 2180280,
+  2246340, 2358720, 2473500, 2622380, 2678720, 2835570, 3164500, 3460100,
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -40,7 +45,7 @@ async function fetchDetail(appid) {
   return entry.data;
 }
 
-function mapGame(appid, d, i) {
+function mapGame(appid, d, i, art = {}) {
   const genres = (d.genres || []).map((g) => g.description).slice(0, 3);
   const cats = (d.categories || []).map((c) => c.description).slice(0, 6);
   const platforms = [];
@@ -50,7 +55,7 @@ function mapGame(appid, d, i) {
   if (!platforms.length) platforms.push('Windows');
   const price = d.is_free ? 0 : (d.price_overview ? d.price_overview.final / 100 : 19.99);
   const discount = d.is_free ? 0 : (d.price_overview?.discount_percent || 0);
-  const shots = [d.header_image, ...((d.screenshots || []).slice(0, 3).map((s) => s.path_full))].filter(Boolean);
+  const shots = [art.hero, ...((d.screenshots || []).slice(0, 3).map((s) => s.path_full))].filter(Boolean);
   return {
     title: d.name,
     tagline: (d.short_description || '').slice(0, 160),
@@ -60,7 +65,7 @@ function mapGame(appid, d, i) {
     tags: [...new Set([...genres, ...cats.filter((c) => c.length < 24)])].slice(0, 6),
     platforms,
     features: cats,
-    coverImage: d.header_image,
+    coverImage: art.cover || d.header_image,
     screenshots: shots,
     price, discountPct: discount,
     digitalSku: `PV-STEAM-${appid}`,
@@ -101,7 +106,8 @@ async function main() {
     const appid = APPIDS[i];
     try {
       const d = await fetchDetail(appid);
-      const doc = mapGame(appid, d, i);
+      const art = await resolveArt(appid, d.header_image);
+      const doc = mapGame(appid, d, i, art);
       const g = await Game.create({ ...doc, developer: dev._id });
       games.push(g);
       console.log(`[import] ok ${appid} ${doc.title}`);

@@ -59,20 +59,17 @@ function SplitHero({ items, ledger }) {
       <aside className="ledger" aria-label="Catalog totals">
         <div className="ledger-head">
           <h3>The ledger</h3>
-          <span className="src">counted from MongoDB just now</span>
         </div>
         <div className="ledger-grid">
           <div className="ledger-item"><span className="k">Titles</span><span className="v">{ledger.titles}</span></div>
           <div className="ledger-item"><span className="k">Keys in stock</span><span className="v">{Number(ledger.keys).toLocaleString()}</span></div>
           <div className="ledger-item"><span className="k">On offer</span><span className="v">{ledger.onSale}</span></div>
-          <div className="ledger-item"><span className="k">Avg discount</span><span className="v up">-{ledger.avgOff}%</span></div>
           <div className="ledger-item"><span className="k">Collectibles</span><span className="v">{ledger.toys}</span></div>
           <div className="ledger-item"><span className="k">Orders</span><span className="v">{ledger.orders}</span></div>
         </div>
         <p className="ledger-note">
           <span className="live-dot" />
           Player counts and review verdicts are pulled live from the Steam Web API.
-          Nothing above is hardcoded — it is counted on every page load.
         </p>
       </aside>
     </section>
@@ -221,38 +218,58 @@ export function Store() {
         <aside>
           <div className="side_box">
             <h4>Price</h4>
-            <Link to="/games?maxPrice=0">Free to play</Link>
+            <Link className={q.maxPrice === '0' ? 'on' : ''} to="/games?maxPrice=0">Free to play</Link>
             <Link to="/games?maxPrice=10">Under $10</Link>
             <Link to="/games?maxPrice=20">Under $20</Link>
             <Link to="/games?maxPrice=40">Under $40</Link>
           </div>
+          {(d.genres || []).length > 0 && (
+            <div className="side_box">
+              <h4>Genres</h4>
+              {d.genres.map((g) => (
+                <Link key={g} className={q.genre === g ? 'on' : ''} to={`/games?genre=${encodeURIComponent(g)}`}>{g}</Link>
+              ))}
+            </div>
+          )}
+          {(d.categories || []).length > 0 && (
+            <div className="side_box">
+              <h4>Features</h4>
+              {d.categories.map((c) => (
+                <Link key={c} className={q.feature === c ? 'on' : ''} to={`/games?feature=${encodeURIComponent(c)}`}>{c}</Link>
+              ))}
+            </div>
+          )}
+          {(d.platforms || []).length > 1 && (
+            <div className="side_box">
+              <h4>Platforms</h4>
+              {d.platforms.map((p) => (
+                <Link key={p} className={q.platform === p ? 'on' : ''} to={`/games?platform=${encodeURIComponent(p)}`}>{p}</Link>
+              ))}
+            </div>
+          )}
           <div className="side_box">
-            <h4>Genres</h4>
-            {(d.genres || []).slice(0, 16).map((g) => (
-              <Link key={g} to={`/games?genre=${encodeURIComponent(g)}`}>{g}</Link>
-            ))}
-          </div>
-          <div className="side_box">
-            <h4>Show only</h4>
-            <Link to="/games?onSale=1">Special offers</Link>
-            <Link to="/games?moddable=1">Moddable</Link>
-            <Link to="/games?sort=popular">Top sellers</Link>
-            <Link to="/games?sort=rating">Top rated</Link>
+            <h4>Sort and show</h4>
+            <Link className={q.sort === 'popular' ? 'on' : ''} to="/games?sort=popular">Top sellers</Link>
+            <Link className={q.sort === 'newest' ? 'on' : ''} to="/games?sort=newest">Just released</Link>
+            <Link className={q.sort === 'rating' ? 'on' : ''} to="/games?sort=rating">Top rated</Link>
+            <Link className={q.sort === 'priceAsc' ? 'on' : ''} to="/games?sort=priceAsc">Price, low first</Link>
+            <Link className={q.onSale ? 'on' : ''} to="/games?onSale=1">Special offers</Link>
+            <Link className={q.moddable ? 'on' : ''} to="/games?moddable=1">Moddable</Link>
           </div>
         </aside>
         <div>
           <div className="chips">
-            <Link className={'chip' + (!q.genre ? ' on' : '')} to="/games">Everything</Link>
-            {(d.genres || []).slice(0, 8).map((g) => (
+            <Link className={'chip' + (!q.genre && !q.feature && !q.platform ? ' on' : '')} to="/games">Everything</Link>
+            {(d.genres || []).slice(0, 10).map((g) => (
               <Link key={g} className={'chip' + (q.genre === g ? ' on' : '')} to={`/games?genre=${encodeURIComponent(g)}`}>{g}</Link>
             ))}
-            {(q.q || q.onSale || q.platform || q.maxPrice) && <Link className="chip on" to="/games">Reset filters</Link>}
+            {(q.q || q.onSale || q.platform || q.feature || q.maxPrice) && <Link className="chip on" to="/games">Reset filters</Link>}
           </div>
           <div className="card-grid">{(d.games || []).map((g, ix) => <GameCard key={g._id} g={g} i={ix} />)}</div>
           {!(d.games || []).length && (
             <div className="empty">
               <h3>Nothing on the shelf</h3>
-              <p>No titles match {q.q ? `"${q.q}" ` : ''}{q.genre ? `in ${q.genre} ` : ''}{q.platform ? `on ${q.platform} ` : ''}right now.</p>
+              <p>No titles match {q.q ? `"${q.q}" ` : ''}{q.genre ? `in ${q.genre} ` : ''}{q.feature ? `with ${q.feature} ` : ''}{q.platform ? `on ${q.platform} ` : ''}right now.</p>
               <Link className="cta-btn" to="/games">Reset filters</Link>
             </div>
           )}
@@ -299,6 +316,17 @@ export function GameDetail({ me }) {
   const { game, reviews, mods, threads, keysAvailable } = d;
   const outOfKeys = (game.price || 0) > 0 && (keysAvailable || 0) === 0;
   const shots = (game.screenshots && game.screenshots.length ? game.screenshots : [game.coverImage]);
+  // Mongoose Maps do not survive JSON, so normalise them here.
+  const asObj = (m) => (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
+  const minMap = asObj(game.systemReq?.minimum);
+  const recMap = asObj(game.systemReq?.recommended);
+  const lineMap = asObj(game.systemReq?.lines);
+  const req = {
+    minimum: minMap, recommended: recMap,
+    platforms: [...new Set([...Object.keys(minMap), ...Object.keys(recMap)])],
+    detail: (lineMap.Windows || []),
+    source: game.systemReq?.source || '',
+  };
   const add = async (edition) => {
     try { await api('/cart/add', { method: 'POST', body: { gameId: game._id, edition } }); toast('Added to cart'); nav('/cart'); }
     catch (e) { setErr(e.message); toast(e.message, 'err'); }
@@ -357,19 +385,67 @@ export function GameDetail({ me }) {
             ))}</div>
           </div>
 
+          <div className="doc">
+            <h5 style={{ marginTop: 0 }}>Developer</h5>
+            <p style={{ margin: '0 0 14px' }}>
+              <b style={{ color: 'var(--bright)' }}>{game.studioName}</b>
+              {game.publisher && game.publisher !== game.studioName && <span className="tiny"> · published by {game.publisher}</span>}
+            </p>
+
+            <h5>System requirements</h5>
+            {req.platforms.length ? (
+              <table className="req_tbl">
+                <thead>
+                  <tr><th>Platform</th><th>Minimum</th><th>Recommended</th></tr>
+                </thead>
+                <tbody>
+                  {req.platforms.map((p) => (
+                    <tr key={p}>
+                      <td className="req_os">{p}</td>
+                      <td>{req.minimum[p] || <span className="tiny">—</span>}</td>
+                      <td>{req.recommended[p] || <span className="tiny">—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : <p className="tiny">Steam does not publish system requirements for this title.</p>}
+
+            {req.detail.length > 0 && (
+              <details className="req_more">
+                <summary>Full spec, {req.detail.length} {req.detail.length === 1 ? 'line' : 'lines'}</summary>
+                {req.detail.map((line, i) => <p key={i}>{line}</p>)}
+              </details>
+            )}
+            {req.source && <p className="tiny" style={{ marginTop: 10 }}>Mirrored from the {req.source}.</p>}
+          </div>
+
           <div className="sys_cols doc">
             <div>
-              <h5>Developer</h5>
-              <p><b style={{ color: 'var(--bright)' }}>{game.studioName}</b></p>
-              {game.developerResponse && <p className="devresp">{game.developerResponse}</p>}
+              <h5 style={{ marginTop: 0 }}>Platforms</h5>
+              <ul>{(game.platforms || ['Windows']).map((p) => <li key={p} className="meta_line"><span className="k">{p}</span></li>)}</ul>
+              {game.deckVerified && <p className="tiny" style={{ marginTop: 6 }}>Steam Deck: {game.deckVerified}</p>}
             </div>
             <div>
-              <h5>Platforms</h5>
-              <ul>{(game.platforms || ['Windows']).map((p) => <li key={p} className="meta_line"><span className="k">{p}</span></li>)}</ul>
-              <h5 style={{ marginTop: 14 }}>Release</h5>
+              <h5 style={{ marginTop: 0 }}>Release</h5>
               <p className="tiny">{game.releaseDate ? new Date(game.releaseDate).toLocaleDateString() : '—'}</p>
+              {game.languages ? <p className="tiny">Interface languages: {game.languages}</p> : null}
+              {!!(game.contentWarnings || []).length && (
+                <p className="tiny">Content: {(game.contentWarnings || []).join(' · ')}</p>
+              )}
+              {(game.categories || []).includes('Steam Achievements') && <p className="tiny">Steam Achievements included</p>}
             </div>
           </div>
+
+          {!!(game.categories || game.features || []).length && (
+            <div className="doc">
+              <h3>Features</h3>
+              <div>
+                {[...new Set([...(game.categories || []), ...(game.features || [])])].map((f) => (
+                  <span className="tag" key={f}>{f}</span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {!!news.length && (
             <div className="doc">
