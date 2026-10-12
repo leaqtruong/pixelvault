@@ -22,44 +22,60 @@ function SplitHero({ items, ledger }) {
   if (!n) return <div className="empty"><h3>Catalog is empty</h3><p>Nothing is published yet.</p></div>;
   const go = (d) => setIdx((i) => (i + d + n) % n);
   const f = items[idx];
-  const sub = (f.shortDescription || f.description || '').replace(/<[^>]*>/g, '').slice(0, 160);
+  // Trim on a word boundary so the blurb never ends mid-word.
+  const raw = (f.shortDescription || f.description || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  const sub = raw.length > 190 ? raw.slice(0, raw.lastIndexOf(' ', 190)) + '…' : raw;
   return (
-    <div className="split"
-      onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}
-      onTouchStart={(e) => { touch.current = e.touches[0].clientX; setPaused(true); }}
-      onTouchEnd={(e) => {
-        const dx = e.changedTouches[0].clientX - touch.current;
-        if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
-        setPaused(false);
-      }}>
-      <Link className="split-main" to={`/games/${f.slug}`}><img src={f.coverImage} alt="" /></Link>
-      <div className="split-veil">
-        <div className="split-kicker">Featured · {(f.genres || []).slice(0, 2).join(' · ')}</div>
-        <h1 className="split-title">{f.title}</h1>
-        <p className="split-sub">{sub || 'Delivered as an encrypted demo key the moment checkout clears.'}</p>
-        <div className="split-cta">
-          <Link className="cta-btn" to={`/games/${f.slug}`}>View title</Link>
-          <Price g={f} />
+    <section className="hero">
+      <div className="hero-art"
+        onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}
+        onTouchStart={(e) => { touch.current = e.touches[0].clientX; setPaused(true); }}
+        onTouchEnd={(e) => {
+          const dx = e.changedTouches[0].clientX - touch.current;
+          if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+          setPaused(false);
+        }}>
+        <Link to={`/games/${f.slug}`} aria-label={f.title} style={{ display: 'block', position: 'absolute', inset: 0 }}>
+          <img src={f.coverImage} alt="" />
+        </Link>
+        <div className="split-veil">
+          <div className="split-kicker">Featured · {(f.genres || []).slice(0, 2).join(' · ')}</div>
+          <h1 className="split-title">{f.title}</h1>
+          <p className="split-sub">{sub || 'Delivered as an encrypted demo key the moment checkout clears.'}</p>
+          <div className="split-cta">
+            <Link className="cta-btn" to={`/games/${f.slug}`}>View title</Link>
+            <Price g={f} />
+          </div>
         </div>
+        {n > 1 && (
+          <>
+            <span className="split-tag">{idx + 1} / {n}</span>
+            <button className="carousel_arrow prev" onClick={() => go(-1)} aria-label="Previous featured title">‹</button>
+            <button className="carousel_arrow next" onClick={() => go(1)} aria-label="Next featured title">›</button>
+          </>
+        )}
       </div>
-      <aside className="ledger">
-        <h3>The ledger</h3>
-        <div className="ledger-row"><span className="k">Titles in catalog</span><span className="v">{ledger.titles}</span></div>
-        <div className="ledger-row"><span className="k">Keys available</span><span className="v">{Number(ledger.keys).toLocaleString()}</span></div>
-        <div className="ledger-row"><span className="k">On special offer</span><span className="v">{ledger.onSale}</span></div>
-        <div className="ledger-row"><span className="k">Average discount</span><span className="v up">-{ledger.avgOff}%</span></div>
-        <div className="ledger-row"><span className="k">Collectibles</span><span className="v">{ledger.toys}</span></div>
-        <div className="ledger-row"><span className="k">Orders fulfilled</span><span className="v">{ledger.orders}</span></div>
-        <p className="ledger-foot"><span className="live-dot" />Player counts and review verdicts come from Steam live. Every figure above is counted from the database.</p>
+
+      <aside className="ledger" aria-label="Catalog totals">
+        <div className="ledger-head">
+          <h3>The ledger</h3>
+          <span className="src">counted from MongoDB just now</span>
+        </div>
+        <div className="ledger-grid">
+          <div className="ledger-item"><span className="k">Titles</span><span className="v">{ledger.titles}</span></div>
+          <div className="ledger-item"><span className="k">Keys in stock</span><span className="v">{Number(ledger.keys).toLocaleString()}</span></div>
+          <div className="ledger-item"><span className="k">On offer</span><span className="v">{ledger.onSale}</span></div>
+          <div className="ledger-item"><span className="k">Avg discount</span><span className="v up">-{ledger.avgOff}%</span></div>
+          <div className="ledger-item"><span className="k">Collectibles</span><span className="v">{ledger.toys}</span></div>
+          <div className="ledger-item"><span className="k">Orders</span><span className="v">{ledger.orders}</span></div>
+        </div>
+        <p className="ledger-note">
+          <span className="live-dot" />
+          Player counts and review verdicts are pulled live from the Steam Web API.
+          Nothing above is hardcoded — it is counted on every page load.
+        </p>
       </aside>
-      {n > 1 ? (
-        <>
-          <span className="split-tag">{idx + 1} / {n}</span>
-          <button className="carousel_arrow prev" onClick={() => go(-1)} aria-label="Previous featured title">‹</button>
-          <button className="carousel_arrow next" onClick={() => go(1)} aria-label="Next featured title">›</button>
-        </>
-      ) : null}
-    </div>
+    </section>
   );
 }
 

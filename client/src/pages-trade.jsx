@@ -57,8 +57,8 @@ export function Cart() {
           </div>
           <div className="buy-rail" style={{ position: 'static' }}>
             <h3>Summary</h3>
-            <div className="ledger-row"><span className="k">Subtotal</span><span className="v num">${d.subtotal.toFixed(2)}</span></div>
-            <div className="ledger-row"><span className="k">Units</span><span className="v num">{units}</span></div>
+            <div className="sum-row total"><span className="k">Subtotal</span><span className="v num">${d.subtotal.toFixed(2)}</span></div>
+            <div className="sum-row"><span className="k">Units</span><span className="v num">{units}</span></div>
             <p className="tiny" style={{ margin: '12px 0 14px' }}>
               Tax and shipping are calculated on the next step. Digital keys are delivered instantly.
             </p>
