@@ -1,0 +1,25 @@
+require('dotenv').config();
+const mongoose = require('mongoose');
+(async () => {
+  await mongoose.connect(process.env.MONGO_URI);
+  const db = mongoose.connection.db;
+  const r = (c, f) => db.collection(c).countDocuments(f);
+  console.log('games total          : ' + await r('games'));
+  console.log('  published          : ' + await r('games', { status: 'published' }));
+  console.log('  priced above zero  : ' + await r('games', { price: { $gt: 0 } }));
+  console.log('  free to play       : ' + await r('games', { price: 0 }));
+  console.log('  on discount        : ' + await r('games', { discountPct: { $gt: 0 } }));
+  console.log('  distinct genres    : ' + (await db.collection('games').distinct('genres')).length);
+  console.log('  distinct platforms : ' + (await db.collection('games').distinct('platforms')).join(', '));
+  console.log('  with Steam reqs    : ' + await r('games', { 'systemReq.minimum.Windows': { $exists: true } }));
+  console.log('toys total           : ' + await r('toys'));
+  console.log('gamekeys             : ' + await r('gamekeys') + '  available: ' + await r('gamekeys', { status: 'available' }));
+  console.log('reviews              : ' + await r('reviews'));
+  console.log('mods (steam-sourced) : ' + await r('mods', { 'source.provider': 'steam-workshop' }));
+  console.log('users                : ' + await r('users') + '  roles: ' + (await db.collection('users').distinct('role')).join(','));
+  console.log('posts                : ' + await r('posts'));
+  console.log('orders               : ' + await r('orders'));
+  const size = await db.stats();
+  console.log('db size              : ' + (size.size / 1048576).toFixed(2) + ' MB');
+  await mongoose.disconnect();
+})();

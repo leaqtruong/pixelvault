@@ -1,0 +1,830 @@
+# PIXELVAULT — BÀI TẬP 2: PHÂN TÍCH HỆ THỐNG VÀ THIẾT KẾ CƠ SỞ DỮ LIỆU MONGODB
+
+Họ tên sinh viên: (điền tên của bạn)
+
+Mã số sinh viên: (điền MSSV)
+
+Lớp: (điền lớp)
+
+Giáo viên hướng dẫn: (điền tên GV)
+
+Nộp bài: 23:59 Thứ Tư, 14/10/2026
+
+File đính kèm: BaiTap2_<MSSV>.docx
+
+Mã nguồn hệ thống: https://github.com/leaqtruong/pixelvault
+
+---
+
+# PHẦN A. THÀNH VIÊN VÀ ĐÓNG GÓP
+
+| STT | Họ tên | MSSV | Phần công việc | Tỉ lệ |
+|---|---|---|---|---|
+| 1 | (điền) | (điền) | Phân tích hệ thống, thiết kế CSDL, viết tài liệu | (vd: 40%) |
+| 2 | (điền) | (điền) | Lập trình server Express, API, bảo mật | (vd: 30%) |
+| 3 | (điền) | (điền) | Lập trình giao diện React, thiết kế giao diện | (vd: 30%) |
+
+---
+
+# PHẦN B. PHÂN TÍCH HỆ THỐNG
+
+## B.1. Giới thiệu chung
+
+PixelVault là hệ thống cửa hàng trực tuyến kết hợp cửa hàng game số và cửa hàng đồ chơi, mô hình hóa theo kiểu lai của Steam Store và Steam Workshop.
+
+Công nghệ sử dụng: Node.js và Express cho máy chủ, MongoDB với Mongoose làm lớp đối tượng hóa dữ liệu, React cho giao diện một trang, Vite để đóng gói.
+
+Hệ thống có ba vai trò người dùng: người dùng (khách hàng), nhà phát triển (đăng game, trả lời đánh giá, xem doanh thu) và quản trị viên.
+
+## B.2. Các chức năng nghiệp vụ chính
+
+**1. Danh mục sản phẩm và tìm kiếm.** Duyệt game và đồ chơi, lọc theo thể loại, nền tảng chạy, khoảng giá và các tính năng của game; sắp xếp theo nhiều tiêu chí; tìm kiếm toàn văn trên tên và mô tả.
+
+**2. Giỏ hàng và thanh toán.** Thêm, xoá, đổi số lượng; tính tổng tiền gồm tiền hàng, thuế và phí vận chuyển; đặt hàng.
+
+**3. Giao key số.** Sau khi thanh toán, hệ thống đặt trước đúng một key còn trống bằng thao tác nguyên tử, mã hoá bằng AES-256-GCM; người dùng giải mã key trong trang thư viện của mình.
+
+**4. Thư viện và lịch sử chơi.** Danh sách game và đồ chơi đã mua, thời gian chơi, thành tựu đã mở khoá.
+
+**5. Đánh giá và phản hồi.** Người dùng chấm điểm từ 1 đến 5 sao, đánh dấu bình luận hữu ích; nhà phát triển trả lời bình luận.
+
+**6. Cộng đồng.** Diễn đàn chia theo mục, trả lời, thích bài, ghim và khoá bài.
+
+**7. Mod cộng đồng.** Hiển thị mod thật được lấy từ Steam Workshop, kèm nguồn gốc và thời điểm lấy.
+
+**8. Bảng điều khiển nhà phát triển.** Thống kê doanh thu, trả lời đánh giá, đăng game mới.
+
+## B.3. Chức năng ngoài phạm vi
+
+Hệ thống không xử lý thanh toán tiền thật và không phát hành key Steam thật. Các key bán ra là mã giả có dạng DEMO-XXXXX-XXXXX-XXXXX chỉ phục vụ mục đích học tập. Phí vận chuyển và thuế là giá mẫu cấu hình trong tệp môi trường, được ghi rõ là giá mẫu ngay trên màn hình thanh toán.
+
+---
+
+# PHẦN C. BIỂU ĐỒ QUAN HỆ DỮ LIỆU THEO HƯỚNG ĐỐI TƯỘNG
+
+## C.1. Quan niệm mô hình
+
+Trong hướng đối tượng, khóa chính không phải khóa ngoại dạng số mà là tham chiếu tới đối tượng khác. Mỗi lớp đối tượng dưới đây ánh xạ thành đúng một collection. Các quan hệ được phân loại:
+
+Quan hệ kế thừa hoặc hợp thành (composition): đối tượng con chỉ tồn tại cùng đối tượng cha. Thể hiện bằng cách nhúng tài liệu con vào trong tài liệu cha.
+
+Quan hệ liên kết (association): hai đối tượng độc lập về vòng đời, liên kết bằng tham chiếu khóa. Thể hiện bằng trường ObjectId.
+
+Quan hệ kế thừa dữ liệu: hai collection cùng phục vụ một khái niệm, dùng chung một trường phân loại. Trong hệ thống này là trường productType của collection games.
+
+## C.2. Sơ đồ lớp
+
+Dưới đây là sơ đồ lớp ở dạng văn bản, thuận tiện để in và trình bày.
+
+```
+LỚP USER                          LỚP GAME
+- _id: ObjectId                   - _id: ObjectId
+- username: String (unique)       - title: String
+- email: String (unique)          - slug: String (unique)
+- passwordHash: String            - developer: --> User
+- role: String (enum)             - genres: [String]
+- wallet: Number                  - platforms: [String]
+- library: [LibraryEntry]         - price: Number
+- toyLibrary: [ToyRef]            - discountPct: Number
+- addresses: [Address]            - steamAppId: Number
+- wishlist: [--> Game]            - systemReq: SystemReq
+- purchaseHistory: [--> Order]    - physical: Physical
+- devProfile: DevProfile          - stats: Stats
+- preferences: Preferences        - status: String
++ ownsGame(id): Boolean           - _id: ObjectId
++ totalPlayMinutes(): Number      + salePrice: Number (thuoc tinh tinh toan)
+                                  + avgRating: Number (thuoc tinh tinh toan)
+
+LỚP GAMEKEY                      LỚP ORDER
+- _id: ObjectId                   - _id: ObjectId
+- game: --> Game                  - user: --> User
+- batchId: String                 - items: [OrderItem]
+- platform: String (enum)         - subtotal: Number
+- codeEnc: String (AES-256-GCM)   - tax: Number
+- codeHash: String (unique)       - shippingTotal: Number
+- status: String (enum)           - grandTotal: Number
+- order: --> Order                - status: String (enum)
+- user: --> User                  - payment: Payment
++ claimOne(): GameKey (tinh)      - shipment: Shipment
++ countAvailable(): Number        - devPayouts: [DevPayout]
+
+LỚP TOY                          LỚP REVIEW
+- _id: ObjectId                   - _id: ObjectId
+- slug: String (unique)           - game: --> Game
+- brand: String                   - user: --> User
+- category: String (enum)         - stars: Number (1..5)
+- price: Number                   - body: String
+- stock: Number                   - helpful: [--> User]
+- weightLb: Number                - devResponse: DevResponse
+- relatedAppId: Number
+
+LỚP MOD                          LỚP POST
+- _id: ObjectId                   - _id: ObjectId
+- game: --> Game                  - board: String (enum)
+- author: --> User (tuong)        - game: --> Game
+- source: Source                  - author: --> User
+- mirror: Mirror                  - title: String
++ Source                          - body: String
+  .provider: String               - likes: [--> User]
+  .id: String                     - replies: [Reply]
+  .url: String
+  .author: String               LỚP TRẺ NỘI TÂM (nhúng)
+  .authorId: String             LibraryEntry: game, edition, purchasedAt,
+  .gameUrl: String                 playMinutes, achievements, completed
+  .retrievedAt: Date             Address: label, fullName, street, city,
++ Mirror                            region, postal, country, phone
+  .subscriptions: Number         SystemReq: minimum, recommended, lines
+  .favorites: Number             Physical: enabled, price, stock, weightLb
+  .views: Number                 Stats: views, unitsDigital, unitsPhysical,
+  .votes: Number                    revenueGross, reviewSum, reviewCount,
+  .rating: Number                    keysAvailable, keysSold
+  .fileSize: Number              OrderItem: kind, game, toy, title, edition,
+  .createdAt: Date                   unitPrice, qty, weightLb, keyIds
+  .updatedAt: Date               Shipment: tracking, carrier, method, cost,
+                                     address, status, shippedAt, deliveredAt
+                                  DevPayout: developer, game, gross, cut
+                                  Reply: user, text, likes, createdAt
+                                  Source: provider, id, url, author,
+                                     authorId, gameUrl, retrievedAt
+                                  Mirror: subscriptions, favorites, views,
+                                     votes, rating, comments, fileSize
+```
+
+## C.3. Bảng quan hệ và số lượng
+
+::: 2 2 2 4 4
+| Từ | Đến | Loại quan hệ | Số lượng | Thể hiện trong MongoDB |
+|---|---|---|---|---|
+| Game.developer | User | liên kết | N–1 | trường developer: ObjectId trỏ tới users._id |
+| User.library | Game | hợp thành | N–N | mảng ObjectId nhúng trong user, không tách collection |
+| User.wishlist | Game | liên kết | N–N | mảng wishlist: [ObjectId] |
+| User.purchaseHistory | Order | liên kết | 1–N | mảng purchaseHistory: [ObjectId] |
+| GameKey.game | Game | liên kết | N–1 | trường game: ObjectId |
+| GameKey.order | Order | liên kết | N–1, rỗng được | order: ObjectId, mặc định null khi key chưa bán |
+| GameKey.user | User | liên kết | N–1, rỗng được | user: ObjectId, mặc định null |
+| Order.user | User | liên kết | N–1 | user: ObjectId, bắt buộc |
+| Order.items | Game, Toy | liên kết | N–N | mảng items nhúng, mỗi phần tử trỏ game hoặc toy |
+| Order.items.keyIds | GameKey | liên kết | N–N | mảng keyIds: chính là các key đã giao cho đơn này |
+| Review.game | Game | liên kết | N–1 | trường game: ObjectId |
+| Review.user | User | liên kết | N–1 | trường user: ObjectId, có index duy nhất (game, user) |
+| Mod.game | Game | liên kết | N–1 | trường game: ObjectId |
+| Mod.author | User | liên kết | N–1, rỗng được | mod lấy từ Steam không có người dùng nội bộ |
+| Post.game | Game | liên kết | N–1, rỗng được | game: ObjectId, null nếu bài không gắn game |
+| Post.replies | User | hợp thành | N–1 | replies nhúng trong post, không cần collection riêng |
+| Review.helpful | User | liên kết | N–N | mảng helpful: [ObjectId] |
+
+## C.4. Ba quyết định thiết kế cần giải thích
+
+**Quyết định 1. Nhúng library thay vì tách collection riêng.**
+
+Quan hệ giữa người dùng và mục thư viện là quan hệ hợp thành: một mục thư viện không tồn tại nếu không có người dùng sở hữu nó, nó không có ý nghĩa nào ngoài người dùng đó, và nó luôn được đọc cùng lúc với thông tin người dùng khi mở trang hồ sơ. Nhúng vào giúp tránh phép nối và giữ tính nhất quán dữ liệu. Ngược lại, đánh giá là một thực thể độc lập vì hệ thống cần truy vấn toàn bộ đánh giá của một game mà không phụ thuộc vào người dùng nào, nên tách thành collection riêng.
+
+**Quyết định 2. Tách collection gamekeys riêng thay vì nhúng vào games.**
+
+Vì cần thao tác khóa ở mức từng bản ghi. Khi thanh toán, hệ thống phải lấy đúng một key còn trống. Nếu nhúng mảng key vào tài liệu game, hai yêu cầu thanh toán đồng thời có thể cùng đọc thấy phần tử đầu tiên và bán trùng cho hai người. Tách thành collection riêng cho phép dùng phương thức findOneAndUpdate, là thao tác nguyên tử ở tầng tài liệu của MongoDB, nên không thể xảy ra bán trùng.
+
+**Quyết định 3. Nhúng items vào orders thay vì trỏ tới games.**
+
+Vì đơn hàng phải là một bản chụp trạng thái tại thời điểm mua. Tên sản phẩm và giá đơn vị phải được lưu lại nguyên vẹn. Nếu chỉ lưu tham chiếu game, thì khi game được đổi tên hoặc tăng giá, toàn bộ lịch sử đơn hàng cũ sẽ bị sai lệch theo.
+
+---
+
+# PHẦN D. THIẾT KẾ CÁC COLLECTION
+
+## D.1. Danh sách collection
+
+::: 2 2 4 6
+| STT | Collection | Số tài liệu | Vai trò chính |
+|---|---|---|---|
+| 1 | users | 3 | tài khoản, thư viện, địa chỉ, hồ sơ nhà phát triển |
+| 2 | games | 74 | danh mục game |
+| 3 | toys | 12 | danh mục đồ chơi |
+| 4 | gamekeys | 650 | kho key số đã mã hoá |
+| 5 | orders | 0 | đơn hàng |
+| 6 | reviews | 14 | đánh giá và phản hồi của nhà phát triển |
+| 7 | mods | 25 | mod lấy từ Steam Workshop |
+| 8 | posts | 1 | diễn đàn |
+
+Số tài liệu ở trên được đo bằng hàm countDocuments trên cơ sở dữ liệu pixelvault, không phải số ước lượng.
+
+## D.2. Collection users
+
+**Chức năng phục vụ:** đăng ký, đăng nhập, phân quyền ba vai trò; thư viện game và đồ chơi đã mua; danh sách yêu thích; địa chỉ giao hàng; hồ sơ nhà phát triển gồm tên studio, email nhận tiền và số dư còn phải nhận; tuỳ chọn cá nhân gồm thể loại yêu thích và bộ lọc nội dung người lớn.
+
+Cấu trúc tài liệu, gồm 25 trường cấp 1:
+
+```
+{
+  username:       String,          // duy nhất, 3 đến 24 ký tự
+  displayName:    String,
+  email:          String,          // duy nhất, tự chuyển chữ thường
+  phone:          String,
+  passwordHash:   String,          // bcrypt, KHÔNG lưu mật khẩu thô
+  role:           String,          // enum: user | developer | admin
+  avatar:         String,
+  bio:            String,
+  wallet:         Number,          // số dư ví nội bộ
+  wishlist:       [ObjectId Game],
+  toyWishlist:    [ObjectId Toy],
+  library:        [ {              // mục thư viện game, nhúng
+     game:         ObjectId,       // bắt buộc
+     edition:      String,         // digital | physical | deluxe
+     purchasedAt:  Date,
+     playMinutes:  Number,
+     lastPlayedAt: Date,
+     achievements: [ { key: String, unlockedAt: Date } ],
+     completed:    Boolean
+  } ],
+  toyLibrary:     [ { toy: ObjectId, purchasedAt: Date, qty: Number } ],
+  addresses:      [ { _id, label, fullName, street, city, region,
+                       postal, country, phone } ],
+  playHistory:    [ { game: ObjectId, minutes: Number, playedAt: Date } ],
+  purchaseHistory:[ ObjectId Order ],
+  devProfile:     { studioName, website, payoutEmail, verified, balanceOwed },
+  preferences:    { favoriteGenres: [String], matureFilter: Boolean },
+  createdAt: Date, updatedAt: Date
+}
+```
+
+**Chỉ mục tạo trên collection này:**
+
+| Chỉ mục | Loại | Lý do |
+|---|---|---|
+| username_1 | duy nhất | chống trùng tên đăng nhập |
+| email_1 | duy nhất | chống trùng email, phục vụ đăng nhập |
+
+## D.3. Collection games
+
+**Chức năng phục vụ:** toàn bộ danh mục game gồm trang chủ, trang cửa hàng và trang chi tiết; bộ lọc theo thể loại, tính năng, nền tảng và khoảng giá; năm kiểu sắp xếp; tìm kiếm toàn văn; quản lý tồn kho key thông qua stats.keysAvailable; thống kê doanh thu và số lượng bán; hiển thị điểm đánh giá trung bình.
+
+Cấu trúc tài liệu, gồm 65 trường cấp 1 và 4 tài liệu con:
+
+```
+{
+  title: String,                   // bắt buộc
+  slug:  String,                   // duy nhất, tự sinh từ title
+  tagline: String, description: String,
+  developer: ObjectId,             // trỏ tới users, bắt buộc
+  studioName: String,
+  genres:    [String],             // có chỉ mục
+  tags:      [String],
+  platforms: [String],             // enum: Windows Mac Linux Steam Deck VR
+  features:  [String],             // danh mục tính năng của Steam
+  coverImage: String, screenshots: [String], trailerUrl: String,
+  price: Number,                   // bắt buộc, không nhỏ hơn 0
+  discountPct: Number,             // từ 0 đến 90
+  digitalSku: String,
+  steamAppId: Number,              // có chỉ mục, sparse
+  productType: String,             // enum game | toy, có chỉ mục
+
+  systemReq: {                     // tài liệu con: yêu cầu hệ thống
+    minimum:     Map<platform, String>,
+    recommended: Map<platform, String>,
+    lines:       Map<platform, [String]>,
+    source: String
+  },
+  physical: {                      // tài liệu con: bản đĩa vật lý
+    enabled: Boolean, price: Number, stock: Number,
+    weightLb: Number, warehouse: String, includes: [String]
+  },
+  toy: { brand, category, material, size, age, relatedAppId },
+  stats: {                         // tài liệu con: số liệu tổng hợp
+    views, unitsDigital, unitsPhysical, revenueGross,
+    reviewSum, reviewCount,        // dùng tính avgRating
+    keysAvailable, keysSold
+  },
+  publisher: String, languages: Number, categories: [String],
+  contentWarnings: [String], deckVerified: String,
+  status:   String,                // enum draft pending published rejected delisted
+  featured: Boolean,
+  releaseDate: Date,               // có chỉ mục giảm dần
+  modSupport: Boolean,
+  sourceUrl: String, fileSizeGB: Number, version: String, rating: String,
+  createdAt: Date, updatedAt: Date
+}
+```
+
+**Thuộc tính tính toán, không lưu trong cơ sở dữ liệu:**
+
+| Thuộc tính | Công thức | Dùng để |
+|---|---|---|
+| salePrice | giá nhân với một trừ phần trăm giảm giá | hiển thị giá sau khuyến mại |
+| avgRating | tổng điểm đánh giá chia cho số đánh giá | hiển thị sao trung bình |
+
+**Một lưu ý quan trọng về nguyên tắc không bịa dữ liệu.** Cửa hàng Steam không công bố dung lượng cài đặt, số phiên bản phần mềm, và xếp hạng độ tuổi theo chuẩn ESRB. Vì vậy ba trường fileSizeGB, version và rating trong lược đồ **không được đặt giá trị mặc định**. Nếu đặt mặc định kiểu version bằng 1.0.0, hệ thống sẽ âm thầm tạo ra một con số trông như dữ liệu thật; tệ hơn, chức năng ẩn nội dung người lớn lọc đúng trường rating nên sẽ hỏng âm thầm vì mọi game đều cùng một xếp hạng. Khi nguồn không có dữ liệu, hệ thống để trống và giao diện hiển thị chưa công bố.
+
+## D.4. Collection toys
+
+**Chức năng phục vụ:** cửa hàng đồ chơi; lọc theo danh mục và theo game liên quan thông qua trường relatedAppId; quản lý tồn kho vật lý bằng trường stock; tính phí vận chuyển theo trọng lượng weightLb; thống kê số lượng đã bán.
+
+```
+{
+  title: String, slug: String, tagline: String, description: String,
+  brand: String,
+  category: String,   // enum Plush Figure Statue Apparel Book Music Pins Other
+  material: String, size: String, age: String,
+  price: Number,      // bắt buộc
+  stock:  Number,
+  weightLb: Number,   // dùng tính phí vận chuyển
+  warehouse: String, includes: [String],
+  coverImage: String, screenshots: [String], sourceUrl: String,
+  relatedAppId: Number,   // appid của game, để biết đồ chơi này thuộc game nào
+  status: String,         // enum published hidden soldout
+  seller: ObjectId User,
+  stats: { views, unitsSold, revenueGross, reviewSum, reviewCount },
+  createdAt: Date, updatedAt: Date
+}
+```
+
+## D.5. Collection gamekeys
+
+**Chức năng phục vụ:** lưu trữ kho key số đã mã hoá; cấp key an toàn khi thanh toán; ngăn bán trùng; ngăn bán lại key đã bán; chứng minh sở hữu key bằng giá trị băm; truy vết key của một đơn hàng và của một người dùng.
+
+Đây là collection nhạy cảm nhất vì chứa bí mật của người mua.
+
+```
+{
+  game:     ObjectId,          // trỏ tới Game, bắt buộc, có chỉ mục
+  batchId:  String,            // mã lô nhập, có chỉ mục
+  platform: String,            // enum Steam Epic GOG PixelVault
+  region:   String,
+  codeEnc:  String,            // BẮT BUỘC - mã hoá AES-256-GCM, định dạng iv.tag.data
+  codeHash: String,            // BẮT BUỘC - SHA-256 của bản rõ, DUY NHẤT
+  status:   String,            // enum available reserved sold revoked, có chỉ mục
+  order: ObjectId,             // null khi key chưa bán
+  user:  ObjectId,             // null khi key chưa bán
+  soldAt: Date,
+  createdAt: Date, updatedAt: Date
+}
+```
+
+**Nguyên tắc bảo mật:** hệ thống không bao giờ lưu key ở dạng rõ. Trường codeEnc lưu bản mã hoá AES-256-GCM; trường codeHash lưu giá trị băm SHA-256 để chống trùng mà không cần giải mã. Khoá mã hoá được đọc từ biến môi trường KEY_ENCRYPTION_SECRET; nếu thiếu biến này, hệ thống báo lỗi ngay lập tức chứ không dùng một giá trị dự phòng viết cứng trong mã nguồn.
+
+**Cơ chế chống bán trùng, chống cạnh tranh:**
+
+```javascript
+// Đặt trước nguyên tử đúng một key còn trống cho một game
+GameKey.claimOne = function (gameId, { orderId = null, userId = null } = {}) {
+  return this.findOneAndUpdate(
+    { game: gameId, status: 'available' },     // điều kiện lọc
+    { $set: { status: 'sold', order: orderId,
+              user: userId, soldAt: new Date() } },
+    { new: true }
+  );
+};
+```
+
+Phương thức findOneAndUpdate là thao tác nguyên tử ở tầng tài liệu của MongoDB: hai yêu cầu thanh toán phát ra đồng thời không thể cùng nhận một key, vì chỉ một yêu cầu khớp điều kiện status bằng available mới cập nhật được.
+
+## D.6. Collection orders
+
+**Chức năng phục vụ:** lưu đơn hàng và tính tổng tiền gồm tiền hàng, thuế và phí vận chuyển; lịch sử mua của người dùng; quản lý vận chuyển và theo dõi trạng thái; báo cáo doanh thu và phần chia cho từng nhà phát triển; phục vụ hoàn tiền và huỷ đơn.
+
+```
+{
+  user: ObjectId,                    // trỏ tới User, bắt buộc
+  items: [ {                         // bản chụp tại thời điểm mua
+    kind: String,                    // enum game | toy
+    game: ObjectId, toy: ObjectId,
+    title: String,                   // chụp lại tên lúc mua
+    edition: String,                 // digital | physical | deluxe
+    unitPrice: Number,               // bắt buộc
+    qty: Number,                     // tối thiểu 1
+    weightLb: Number,
+    keyIds: [ObjectId]               // các key đã giao cho đơn này
+  } ],
+  subtotal: Number, discountTotal: Number,
+  tax: Number, shippingTotal: Number, grandTotal: Number,
+  status: String,                    // enum pending paid fulfilled
+                                     // partially_shipped shipped delivered
+                                     // refunded cancelled
+  payment: { method: String, last4: String },   // chỉ lưu 4 số cuối thẻ
+  shipment: {
+    tracking: String, carrier: String,
+    method: String,                  // standard | express | overnight
+    cost: Number,
+    address: { fullName, street, city, region, postal, country, phone },
+    status: String,                  // packing shipped in_transit
+                                     // out_for_delivery delivered returned
+    shippedAt: Date, deliveredAt: Date
+  },
+  devPayouts: [ { developer: ObjectId, game: ObjectId,
+                  gross: Number, cut: Number } ],
+  createdAt: Date, updatedAt: Date
+}
+```
+
+## D.7. Collection reviews
+
+**Chức năng phục vụ:** cho phép người dùng đánh giá game từ 1 đến 5 sao; ngăn đánh giá trùng; đếm số người đánh dấu bình luận là hữu ích để sắp xếp; cho phép nhà phát triển trả lời đánh giá; cung cấp dữ liệu tính điểm trung bình đưa vào trường stats của games.
+
+```
+{
+  game: ObjectId,                   // trỏ tới Game, bắt buộc, có chỉ mục
+  user: ObjectId,                   // trỏ tới User, bắt buộc
+  stars: Number,                    // bắt buộc, từ 1 đến 5
+  title: String, body: String,      // body tối đa 4000 ký tự
+  playMinutesAtReview: Number,
+  helpful: [ObjectId User],         // những người bấm hữu ích
+  devResponse: { text: String, respondedAt: Date },
+  createdAt: Date, updatedAt: Date
+}
+```
+
+**Chỉ mục duy nhất (game, user):** bảo đảm một người chỉ đánh giá một game đúng một lần. Ràng buộc này được cưỡng chế ngay ở tầng cơ sở dữ liệu, không phụ thuộc vào việc lập trình viên có kiểm tra trong mã nguồn hay không.
+
+## D.8. Collection mods
+
+**Chức năng phục vụ:** hiển thị trang mod cộng đồng; hiển thị dữ liệu thật lấy từ Steam Workshop kèm số liệu của Steam và nguồn gốc cùng thời điểm lấy; lọc theo game; sắp xếp theo lượng người đăng ký, ngày cập nhật hoặc dung lượng; phân biệt mod tải lên nội bộ với mod lấy từ Steam; cho phép người dùng tự đăng mod của riêng mình.
+
+```
+{
+  game:   ObjectId,          // trỏ tới Game, bắt buộc, có chỉ mục
+  title:  String, tagline: String, description: String,
+  author: ObjectId,          // rỗng được, vì mod từ Steam không có
+                            // người dùng nội bộ
+
+  source: {                  // hành trình nguồn gốc
+    provider:   String,      // 'steam-workshop', vắng mặt nếu tải lên nội bộ
+    id:         String,      // mã publishedfileid của Steam
+    url:        String,      // steamcommunity.com/sharedfiles/filedetails/?id=...
+    author:     String,      // tên hiển thị công khai của tác giả
+    authorId:   String,      // steamid64, đúng như Steam trả về
+    gameUrl:    String,      // trang Workshop của game cha
+    retrievedAt: Date        // thời điểm lấy dữ liệu
+  },
+  mirror: {                  // số liệu do Steam công bố, không phải của hệ thống
+    subscriptions: Number,   // số người đăng ký theo dõi
+    favorites: Number, views: Number,
+    votes: Number, rating: Number, comments: Number,
+    fileSize: Number,        // đơn vị byte
+    createdAt: Date, updatedAt: Date
+  },
+  version: String,           // CỐ Ý ĐỂ TRỐNG, xem giải thích bên dưới
+  loader: String, downloadUrl: String,
+  previewImage: String, screenshots: [String], tags: [String],
+  stats: { downloads: Number, endorsements: Number, views: Number },
+  endorsedBy: [ObjectId User],
+  comments: [ { user: ObjectId, text: String, createdAt: Date } ],
+  status: String,
+  createdAt: Date, updatedAt: Date
+}
+```
+
+**Chỉ mục duy nhất (source.provider, source.id):** bảo đảm mỗi mục Workshop chỉ có một dòng dữ liệu, nên chạy lại chương trình nạp chỉ bổ sung mục còn thiếu chứ không tạo bản trùng.
+
+**Giải thích hai trường để trống.** Steam không công bố phiên bản của một mục Workshop, nên trường version được để trống và giao diện hiển thị rõ là chưa công bố, thay vì hiện 1.0.0. Đồng thời trường downloadUrl để trống vì PixelVault không lưu trữ tệp mod; nút tải trên giao diện dẫn thẳng về trang gốc của Steam.
+
+## D.9. Collection posts
+
+**Chức năng phục vụ:** diễn đàn cộng đồng chia theo sáu mục; đăng bài và trả lời; thích bài; ghim và khoá bài; gắn bài viết với một game cụ thể.
+
+```
+{
+  board:  String,           // enum general lfg guides support deals game
+  game:   ObjectId,         // rỗng được
+  title:  String,           // bắt buộc, tối đa 160 ký tự
+  body:   String,           // bắt buộc, tối đa 12000 ký tự
+  author: ObjectId,         // bắt buộc
+  tags:   [String],
+  pinned: Boolean, locked: Boolean, views: Number,
+  likes:  [ObjectId User],
+  replies: [ {               // nhúng, vì reply luôn thuộc một bài
+    _id, user: ObjectId, text: String,
+    likes: [ObjectId], createdAt: Date
+  } ],
+  createdAt: Date, updatedAt: Date
+}
+```
+
+---
+
+# PHẦN E. CHỨC NĂNG MÀ MỖI COLLECTION PHỤC VỤ
+
+::: 2 8
+| Collection | Chức năng của hệ thống được phục vụ |
+|---|---|
+| users | đăng ký, đăng nhập, đăng xuất; phân quyền ba vai trò; thư viện game và đồ chơi đã mua; danh sách yêu thích; lịch sử chơi và thành tựu; lưu địa chỉ giao hàng; hồ sơ nhà phát triển và số dư cần nhận; tuỳ chọn thể loại yêu thích và bộ lọc nội dung |
+| games | trang chủ và cửa hàng gồm liệt kê, lọc theo thể loại, tính năng, nền tảng, khoảng giá; sắp xếp năm kiểu; tìm kiếm toàn văn; trang chi tiết gồm ảnh, mô tả, yêu cầu hệ thống thật, giá; quản lý tồn kho key; thống kê doanh thu và số lượng bán; tính điểm đánh giá trung bình |
+| toys | cửa hàng đồ chơi; lọc theo danh mục và theo game liên quan; quản lý tồn kho vật lý; tính phí vận chuyển theo trọng lượng; thống kê số đồ chơi đã bán |
+| gamekeys | kho key số đã mã hoá; cấp key an toàn khi thanh toán bằng thao tác nguyên tử; ngăn bán trùng; ngăn bán lại key đã bán; chứng minh sở hữu key bằng giá trị băm; truy vết key của một đơn hàng và của một người dùng |
+| orders | đặt hàng và tính tổng tiền gồm tiền hàng, thuế, vận chuyển; lịch sử mua; quản lý vận chuyển và theo dõi trạng thái; báo cáo doanh thu và phần chia phần trăm cho từng nhà phát triển; phục vụ hoàn tiền và huỷ đơn |
+| reviews | đánh giá game từ 1 đến 5 sao; chống đánh giá trùng bằng chỉ mục duy nhất; đếm số đánh dấu hữu ích để xếp hạng bình luận; nhà phát triển trả lời đánh giá; cấp dữ liệu tính điểm trung bình |
+| mods | trang mod của hệ thống; hiển thị mod thật kèm số liệu của Steam, nguồn gốc và thời điểm lấy; lọc theo game; sắp xếp theo lượng đăng ký, ngày cập nhật, dung lượng; phân biệt tải lên nội bộ với lấy từ Steam |
+| posts | diễn đàn theo sáu mục; đăng bài và trả lời; thích bài; ghim và khoá bài; gắn bài viết với một game cụ thể |
+
+---
+
+# PHẦN F. TẠO CẤU TRÚC COLLECTION TRONG MONGODB
+
+## F.1. Công cụ định nghĩa lược đồ
+
+Hệ thống dùng thư viện Mongoose để định nghĩa cấu trúc. Mỗi tệp lược đồ trong thư mục models ánh xạ thành một collection.
+
+::: 2 2 6
+| Tệp lược đồ | Collection | Đặc điểm đáng chú ý |
+|---|---|---|
+| User.js | users | có phương thức ownsGame và totalPlayMinutes |
+| Game.js | games | có tài liệu con, thuộc tính tính toán, middleware sinh slug |
+| Toy.js | toys | có middleware sinh slug, chỉ mục toàn văn |
+| GameKey.js | gamekeys | có hàm tĩnh claimOne và countAvailable |
+| Order.js | orders | có hai tài liệu con nhúng là items và shipment |
+| Review.js | reviews | chỉ mục duy nhất trên cặp game và user |
+| Mod.js | mods | có tài liệu con source và mirror |
+| Post.js | posts | có tài liệu con replies nhúng |
+
+## F.2. Đoạn mã minh hoạ trích từ lược đồ gamekeys
+
+```javascript
+const mongoose = require('mongoose');
+
+const keySchema = new mongoose.Schema({
+  game:   { type: mongoose.Schema.Types.ObjectId, ref: 'Game',
+             required: true, index: true },
+  batchId:{ type: String, default: 'seed', index: true },
+  platform: { type: String, enum: ['Steam', 'Epic', 'GOG', 'PixelVault'],
+              default: 'Steam' },
+  region:   { type: String, default: 'GLOBAL' },
+  // bản mã hoá AES-256-GCM, định dạng iv.tag.data
+  codeEnc:  { type: String, required: true },
+  // SHA-256 của bản rõ, duy nhất, chống nạp trùng
+  codeHash: { type: String, required: true, unique: true },
+  status:   { type: String, enum: ['available', 'reserved', 'sold', 'revoked'],
+              default: 'available', index: true },
+  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', default: null },
+  user:  { type: mongoose.Schema.Types.ObjectId, ref: 'User',  default: null },
+  soldAt:{ type: Date, default: null },
+}, { timestamps: true });
+
+keySchema.index({ game: 1, status: 1 });
+
+// Đặt trước nguyên tử đúng một key còn trống, an toàn cạnh tranh
+keySchema.statics.claimOne = function (gameId, { orderId = null, userId = null } = {}) {
+  return this.findOneAndUpdate(
+    { game: gameId, status: 'available' },
+    { $set: { status: 'sold', order: orderId, user: userId,
+              soldAt: new Date() } },
+    { new: true }
+  );
+};
+
+module.exports = mongoose.model('GameKey', keySchema);
+```
+
+## F.3. Middleware tự sinh slug
+
+Slug là định dạng đường dẫn thân thiện cho tên sản phẩm, ví dụ terraria-abc123. Slug được sinh tự động khi người dùng không nhập:
+
+```javascript
+gameSchema.pre('validate', function (next) {
+  if (!this.slug && this.title) {
+    this.slug = this.title.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      + '-' + Date.now().toString(36);
+  }
+  next();
+});
+```
+
+## F.4. Lệnh tạo collection trên cơ sở dữ liệu đang chạy
+
+MongoDB tạo collection theo kiểu chậm: collection chỉ tồn tại sau khi có tài liệu đầu tiên. Để chủ động tạo toàn bộ collection và toàn bộ chỉ mục:
+
+```javascript
+const mongoose = require('mongoose');
+const db = mongoose.connection.db;
+
+// Bước 1: tạo đủ tám collection
+const names = ['users', 'games', 'toys', 'gamekeys',
+               'orders', 'reviews', 'mods', 'posts'];
+
+for (const name of names) {
+  const exists = await db.listCollections({ name }).hasNext();
+  if (exists) {
+    console.log(name + ': đã tồn tại');
+  } else {
+    await db.createCollection(name);
+    console.log(name + ': đã tạo mới');
+  }
+}
+
+// Bước 2: tạo chỉ mục đúng theo lược đồ
+await mongoose.model('User').syncIndexes();
+await mongoose.model('Game').syncIndexes();
+await mongoose.model('Toy').syncIndexes();
+await mongoose.model('GameKey').syncIndexes();
+await mongoose.model('Order').syncIndexes();
+await mongoose.model('Review').syncIndexes();
+await mongoose.model('Mod').syncIndexes();
+await mongoose.model('Post').syncIndexes();
+```
+
+Lệnh tương đương trong trình quản lý trực quan như MongoDB Compass hoặc Navicat: kết nối vào cơ sở dữ liệu pixelvault, chọn Indexes trên từng collection, rồi tạo chỉ mục với các thuộc tính tương ứng với bảng ở mục F.5.
+
+## F.5. Danh sách chỉ mục đã tạo thực tế
+
+Đọc trực tiếp từ database bằng lệnh lấy danh sách chỉ mục:
+
+::: 2 8
+| Collection | Danh sách chỉ mục |
+|---|---|
+| users | username_1 (duy nhất), email_1 (duy nhất) |
+| games | slug_1 (duy nhất), genres_1, status_1, title_text_tagline_text_description_text (toàn văn), price_1_discountPct_1, platforms_1, releaseDate_-1, steamAppId_1 (sparse), productType_1 |
+| toys | slug_1 (duy nhất), category_1, relatedAppId_1, status_1, title_text_tagline_text_description_text (toàn văn), price_1 |
+| gamekeys | game_1, batchId_1, codeHash_1 (duy nhất), status_1, game_1_status_1 |
+| reviews | game_1, game_1_user_1 (duy nhất) |
+| mods | game_1, source.provider_1, source.provider_1_source.id_1 (duy nhất) |
+| posts | board_1 |
+| orders | chưa khai báo chỉ mục |
+
+**Lý do chọn từng chỉ mục:**
+
+::: 2 8
+| Chỉ mục | Mục đích |
+|---|---|
+| slug_1 duy nhất | tạo đường dẫn thân thiện, đồng thời chống trùng đường dẫn |
+| chỉ mục toàn văn trên title, tagline, description | phục vụ tìm kiếm toàn văn ở cửa hàng |
+| price_1_discountPct_1 | lọc theo khoảng giá và sắp xếp theo giá |
+| genres_1, platforms_1, category_1 | phục vụ các mặt lọc của cửa hàng |
+| codeHash_1 duy nhất | chống nạp trùng key, ràng buộc ở tầng dữ liệu chứ không kiểm tra trong mã |
+| game_1_user_1 duy nhất | mỗi người chỉ đánh giá mỗi game một lần |
+| source.provider_1 kèm source.id_1 duy nhất | mỗi mục Workshop chỉ có một dòng, chạy lại nạp không nhân bản |
+| game_1_status_1 | truy vấn nóng, tìm key còn trống của một game |
+| releaseDate_-1 | sắp xếp theo ngày phát hành mới nhất |
+
+---
+
+# PHẦN G. THÊM DỮ LIỆU VÀO CÁC COLLECTION
+
+## G.1. Nguyên tắc lấy dữ liệu
+
+Toàn bộ số liệu trên cửa hàng đến từ giao diện lập trình chính thức của Steam, không phải dữ liệu tự nghĩ ra.
+
+::: 4 6
+| Dữ liệu | Nguồn |
+|---|---|
+| tên game, hãng phát triển, thể loại, giá, phần trăm giảm giá, ngày phát hành, nền tảng chạy | giao diện lập trình Steam Store |
+| yêu cầu hệ thống tối thiểu và khuyến nghị, theo từng hệ điều hành | trường pc_requirements, mac_requirements, linux_requirements |
+| ảnh bìa và ảnh nền | máy chủ ảnh của Steam, chọn bản lớn nhất mà mã game có |
+| danh mục tính năng như một người chơi, chơi chung, thành tựu | trường categories của Steam |
+| mod, số liệu Steam và nguồn của mod | trang Steam Workshop |
+| tên, thương hiệu, giá, tồn kho của đồ chơi | trang bán hàng chính thức của nhà sản xuất |
+| số liệu tổng hợp, tồn kho, tổng tiền đơn hàng, doanh thu | đếm trực tiếp từ chính cơ sở dữ liệu MongoDB |
+
+**Nguyên tắc quan trọng: khi nguồn không có dữ liệu thì để trống, không dựng ra một con số trông hợp lý.** Ví dụ Steam không công bố dung lượng cài đặt, số phiên bản, xếp hạng độ tuổi, nên ba trường đó không có giá trị mặc định trong lược đồ và giao diện hiển thị chưa công bố.
+
+## G.2. Danh sách chương trình nạp dữ liệu
+
+::: 4 6
+| Tệp chương trình | Công việc thực hiện |
+|---|---|
+| import-steam.js | nạp danh mục game cơ bản từ danh sách mã ứng dụng Steam |
+| import-more.js | bổ sung các mã game còn thiếu; tham số rebuild dựng lại danh mục bị xoá |
+| enrich-steam.js | bổ sung yêu cầu hệ thống, nhà phát triển, ngôn ngữ, danh mục tính năng |
+| upgrade-covers.js | nâng ảnh bìa lên bản độ phân giải cao nhất có sẵn |
+| steamArt.js, steamReq.js | hàm dùng chung: chọn ảnh lớn nhất, phân tích mã HTML yêu cầu hệ thống |
+| import-workshop.js | lấy mod từ Steam Workshop kèm nguồn và thời điểm lấy |
+| seed-toys.js | nạp 12 đồ chơi từ trang bán hàng chính thức |
+| seed-reviews.js | nạp dữ liệu đánh giá |
+| block-titles.js | danh sách mã game không phù hợp để loại khỏi danh mục |
+
+## G.3. Ví dụ chuyển đổi dữ liệu Steam thành tài liệu games
+
+```javascript
+const price = d.is_free ? 0
+  : (d.price_overview && Number.isFinite(d.price_overview.final)
+      ? d.price_overview.final / 100
+      : null);   // KHÔNG dựng giá 19.99 khi Steam không có giá
+
+return {
+  title: d.name,
+  tagline: (d.short_description || '').slice(0, 160),
+  studioName: (d.developers && d.developers[0]) || 'Unknown studio',
+  genres:    genres.length ? genres : ['Indie'],
+  platforms,                       // lấy từ d.platforms
+  features:  cats,                 // danh mục tính năng của Steam
+  coverImage: art.cover,           // bản ảnh lớn nhất có sẵn
+  screenshots: [art.hero, ...shots].filter(Boolean),
+  price, discountPct: discount,
+  digitalSku: `PV-STEAM-${appid}`,
+  steamAppId: appid,
+  // Steam không công bố ba trường dưới, để trống thay vì bịa
+  fileSizeGB: undefined,
+  version:    undefined,
+  rating:     undefined,
+  systemReq:  {},                  // enrich-steam.js sẽ điền sau
+  status: 'published',
+  releaseDate: d.release_date?.date ? new Date(d.release_date.date) : undefined,
+  developer: devId,
+};
+```
+
+## G.4. Mã hoá key khi nạp dữ liệu
+
+```javascript
+const { encryptKey, hashKey, makeDemoKey } = require('../lib/keyCrypto');
+
+const plain = makeDemoKey('DEMO');   // ví dụ DEMO-06883-4B6C5-42C30
+
+await GameKey.create({
+  game: gameId,
+  batchId: 'import-2026-10',
+  platform: 'Steam',
+  codeEnc:  encryptKey(plain),       // mã hoá AES-256-GCM
+  codeHash: hashKey(plain),          // SHA-256, có chỉ mục duy nhất
+  status: 'available',
+});
+```
+
+**Lưu ý về bản quyền.** Hệ thống chỉ sử dụng hình minh hoạ và thông tin mô tả từ Steam. Mọi mã key bán ra đều là mã giả có dạng DEMO-XXXXX-XXXXX-XXXXX, tuyệt đối không phải key Steam thật, nhằm phục vụ mục đích học tập và không dùng để kích hoạt phần mềm.
+
+## G.5. Kết quả nạp dữ liệu thực tế
+
+Đo bằng hàm đếm tài liệu trên cơ sở dữ liệu tên pixelvault:
+
+::: 3 7
+| Collection | Số tài liệu | Chi tiết |
+|---|---|---|
+| games | 74 | 74 đã xuất bản; 65 có giá; 9 miễn phí; 21 đang giảm giá; 18 thể loại; nền tảng gồm Linux, Mac, Windows; 74 trên 74 có yêu cầu hệ thống thật lấy từ Steam |
+| toys | 12 |  |
+| gamekeys | 650 | 650 còn trống |
+| reviews | 14 |  |
+| mods | 25 | tất cả có trường source.provider bằng steam-workshop |
+| users | 3 | gồm vai trò user và developer |
+| posts | 1 |  |
+| orders | 0 |  |
+
+## G.6. Ví dụ truy vấn tổng hợp bằng đường ối tổng hợp
+
+```javascript
+// Thống kê số lượng game theo từng thể loại
+await Game.aggregate([
+  { $unwind: '$genres' },
+  { $group: { _id: '$genres', soLuong: { $sum: 1 } } },
+  { $sort: { soLuong: -1 } },
+  { $limit: 10 }
+]);
+
+// Doanh thu và phần chia cho từng nhà phát triển
+await Order.aggregate([
+  { $unwind: '$devPayouts' },
+  { $group: {
+      _id: '$devPayouts.developer',
+      tongDoanhThu: { $sum: '$devPayouts.gross' },
+      tongChia:      { $sum: '$devPayouts.cut' },
+      soDon:         { $sum: 1 }
+  }},
+  { $sort: { tongDoanhThu: -1 } }
+]);
+
+// Số key đã bán theo từng game
+await GameKey.aggregate([
+  { $match: { status: 'sold' } },
+  { $group: { _id: '$game', soKeyDaBan: { $sum: 1 } } },
+  { $sort: { soKeyDaBan: -1 } }
+]);
+
+// Tổng số key còn trống, dùng để hiển thị bảng số liệu tổng hợp
+await Game.aggregate([
+  { $group: { _id: null, tongKey: { $sum: '$stats.keysAvailable' } } }
+]);
+
+// Top game theo số lượt xem, chỉ lấy game đã xuất bản
+await Game.find({ status: 'published' })
+  .sort({ 'stats.views': -1 })
+  .limit(10)
+  .select('title stats.views stats.revenueGross');
+```
+
+---
+
+# PHẦN H. BẢO MẬT VÀ HIỆU NĂNG
+
+## H.1. Các biện pháp bảo mật đã áp dụng
+
+::: 3 7
+| Rủi ro | Cách xử lý trong hệ thống |
+|---|---|
+| lộ mật khẩu người dùng | chỉ lưu trường passwordHash theo thuật toán bcrypt, không bao giờ lưu mật khẩu thô |
+| lộ key số | mã hoá trường codeEnc bằng AES-256-GCM; trường codeHash là SHA-256 chống trùng mà không cần giải mã; không có giá trị dự phòng viết cứng, thiếu biến môi trường thì hệ thống báo lỗi ngay |
+| truy cập chéo dữ liệu người dùng | mọi đường dẫn có tham số định danh đều lọc theo người dùng đang đăng nhập trong phiên; đã rà soát toàn bộ |
+| bán trùng key | dùng findOneAndUpdate nguyên tử kèm chỉ mục trên cặp game và trạng thái |
+| đánh giá trùng | chỉ mục duy nhất trên cặp game và người dùng |
+| nhân bản mod khi chạy lại chương trình nạp | chỉ mục duy nhất trên cặp nhà cung cấp và mã nguồn |
+| rò thông tin thẻ thanh toán | chỉ lưu bốn số cuối trong trường payment.last4 |
+
+## H.2. Các biện pháp hiệu năng và độ ổn định
+
+| Vấn đề | Cách xử lý |
+|---|---|
+| truy vấn khi cơ sở dữ liệu chưa sẵn sàng | giao diện lập trình trả về mã lỗi 503 nếu trạng thái kết nối khác 1; giao diện người dùng hiện màn hình khởi động và tự thử lại, tránh lỗi hết thời gian chờ của Mongoose |
+| lỗi trong hàm xử lý bất đồng bộ | mọi hàm xử lý được bọc lại để lỗi trả về dạng JSON thay vì làm sập tiến trình máy chủ |
+| mật khẩu và khoá mã hoá nằm trong mã nguồn | đọc từ tệp môi trường; tệp môi trường bị loại khỏi kiểm soát phiên bản, chỉ commit tệp mẫu |
+| chạy được trên máy khác | tệp khởi chạy tự dò trình chạy Node, tự tìm tệp mongod, giải phóng cổng, chờ cơ sở dữ liệu bằng cách gửi truy vấn kiểm tra, xác minh danh mục trước khi đóng gói và chạy |
+
+---
+
+# PHẦN I. KẾT LUẬN
+
+Hệ thống PixelVault gồm tám collection được ánh xạ từ tám lớp đối tượng, tổng cộng hơn 240 trường dữ liệu, với mười chín chỉ mục trong đó có sáu chỉ mục duy nhất phục vụ các truy vấn thực tế của hệ thống. Dữ liệu đã nạp gồm 74 game, 12 đồ chơi, 650 mã key, 14 đánh giá, 25 mod và 3 tài khoản người dùng. Toàn bộ dữ liệu trên cửa hàng đều được lấy từ nguồn thật và ghi rõ nguồn gốc; các trường mà nguồn không công bố được để trống kèm chú thích, thay vì điền bằng giá trị bịa.
