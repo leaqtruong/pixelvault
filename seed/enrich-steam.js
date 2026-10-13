@@ -78,7 +78,14 @@ function platformKey(k) {
       .filter((x) => !DROP_PREFIX.test(x) && KEEP_CATEGORIES.has(x));
     for (const x of cats) catTotals.set(x, (catTotals.get(x) || 0) + 1);
 
-    const content = (d.content_descriptors?.ids || []).map((x) => x.description);
+    /* Steam returns content_descriptors.ids as an array of objects with no
+       description field, so mapping straight to x.description yields an array
+       of undefined (stored as [null]). Drop anything without text; an empty
+       array means "Steam published nothing", which is different from a guess. */
+    const content = (d.content_descriptors?.ids || [])
+      .map((x) => (x && typeof x === 'object' ? x.description : x))
+      .map((x) => (typeof x === 'string' ? x.trim() : ''))
+      .filter(Boolean);
     const publishers = (d.publishers || []).join(', ');
 
     const hasReq = Object.keys(minimum).length > 0;

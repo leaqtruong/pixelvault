@@ -31,14 +31,19 @@ const gameSchema = new mongoose.Schema({
   },
   sourceUrl: { type: String, default: '' },
   fileSizeGB: Number,
-  version: { type: String, default: '1.0.0' },
+  /* Steam publishes no install size, no version string and no ESRB rating for
+     a store item, so these carry no default. A schema default would silently
+     re-introduce a plausible-looking value: Mongoose applies `default` even
+     when the field is explicitly set to undefined, so passing undefined from
+     an importer is not enough on its own. */
+  version: String,
   // physical edition
   physical: {
     enabled: { type: Boolean, default: false },
     price: { type: Number, default: 0 },
     stock: { type: Number, default: 0 },
-    weightLb: { type: Number, default: 0.4 },
-    warehouse: { type: String, default: 'US-EAST' },
+    weightLb: { type: Number, default: 0 },
+    warehouse: { type: String, default: '' },
     includes: [String]
   },
   systemReq: {
@@ -56,7 +61,8 @@ const gameSchema = new mongoose.Schema({
   contentWarnings: { type: [String], default: [] },
   categories: { type: [String], default: [] },
   deckVerified: { type: String, default: '' },
-  rating: { type: String, enum: ['E', 'E10+', 'T', 'M', 'AO'], default: 'E' },
+  // unset unless a studio records one — see the note on `version` above
+  rating: { type: String, enum: ['E', 'E10+', 'T', 'M', 'AO'] },
   status: { type: String, enum: ['draft', 'pending', 'published', 'rejected', 'delisted'], default: 'pending', index: true },
   featured: { type: Boolean, default: false },
   releaseDate: { type: Date, default: Date.now },
