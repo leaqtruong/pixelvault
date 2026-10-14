@@ -53,7 +53,20 @@ app.use('/', require('./routes/sandboxGateway'));
 // React SPA (built with `npm run build --prefix client`)
 const dist = path.join(__dirname, 'client', 'dist');
 if (fs.existsSync(path.join(dist, 'index.html'))) {
-  app.use(express.static(dist, { maxAge: '7d', immutable: true }));
+  app.use(express.static(dist, {
+    maxAge: '7d',
+    immutable: true,
+    // index.html is the only file that NAMES the content-hashed bundles.
+    // Caching it makes the client keep requesting bundle filenames the next
+    // build deleted, which 404s and leaves a blank page - and "immutable"
+    // stops the browser from ever revalidating, so it never recovers.
+    // Hashed assets keep their long cache: their name changes with content.
+    setHeaders(res, filePath) {
+      if (path.basename(filePath) === 'index.html') {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+    },
+  }));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
     // Never cache the shell: clients always boot the newest bundle.

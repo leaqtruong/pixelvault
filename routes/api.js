@@ -258,19 +258,22 @@ router.get('/home', async (req, res) => {
       if (g) catTiles.push({ name: c, img: g.coverImage, slug: g.slug });
     }
     // Ledger figures — all counted from the database, never invented.
+    // stats.keysAvailable is a cache for store badges; the ledger is a
+    // headline figure, so it counts the key inventory directly instead of
+    // trusting a counter that can drift when an order is rolled back.
     const published = { status: 'published', productType: { $ne: 'toy' } };
-    const [titles, toyCount, dealsAgg, keysAgg, orderAgg] = await Promise.all([
+    const [titles, toyCount, dealsAgg, keysInStock, orderAgg] = await Promise.all([
       Game.countDocuments(published),
       Toy.countDocuments({ status: 'published' }),
       Game.countDocuments({ ...published, discountPct: { $gt: 0 } }),
-      Game.aggregate([{ $match: published }, { $group: { _id: null, n: { $sum: '$stats.keysAvailable' } } }]),
+      GameKey.countDocuments({ status: 'available' }),
       Order.countDocuments({ status: { $ne: 'cancelled' } }),
     ]);
     const ledger = {
       titles,
       toys: toyCount,
       onSale: dealsAgg,
-      keys: keysAgg[0]?.n || 0,
+      keys: keysInStock,
       orders: orderAgg,
     };
     res.json({ featured, deals, fresh, threads, toys, catTiles, ledger });
@@ -412,6 +415,7 @@ async function fulfilOrder(order) {
   const claimedKeyIds = [];
   const decPhys = [];
   const decToys = [];
+  const decKeys = [];
   const devPayouts = [];
   try {
     for (const it of order.items) {
@@ -440,13 +444,18 @@ async function fulfilOrder(order) {
         if (!updated) throw new Error(`${g.title} physical stock insufficient.`);
         decPhys.push({ gameId: g._id, qty: it.qty });
       } else if (it.unitPrice > 0) {
+        const before = claimedKeyIds.length;
         for (let k = 0; k < it.qty; k++) {
           const key = await GameKey.claimOne(g._id, { orderId: order._id, userId: order.user });
           if (!key) throw new Error(`${g.title} is out of digital keys.`);
           claimedKeyIds.push(key._id);
           it.keyIds.push(key._id);
         }
-        await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': it.qty, 'stats.keysSold': it.qty, 'stats.keysAvailable': -it.keyIds.length } });
+        // Count only the keys this item took. it.keyIds is cumulative, so
+        // using its length would subtract keys an earlier attempt claimed.
+        const taken = claimedKeyIds.length - before;
+        decKeys.push({ gameId: g._id, qty: taken });
+        await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': it.qty, 'stats.keysSold': it.qty, 'stats.keysAvailable': -taken } });
       } else {
         await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': it.qty } });
       }
@@ -463,6 +472,10 @@ async function fulfilOrder(order) {
     }
     for (const r of decPhys) await Game.updateOne({ _id: r.gameId }, { $inc: { 'physical.stock': r.qty, 'stats.unitsPhysical': -r.qty } });
     for (const r of decToys) await Toy.updateOne({ _id: r.toyId }, { $inc: { stock: r.qty, 'stats.unitsSold': -r.qty } });
+    // The released keys go back to the pool above, so the cached counter has
+    // to go back too. Without this every rollback left stats.keysAvailable
+    // permanently lower than the real inventory and the store badges lied.
+    for (const r of decKeys) await Game.updateOne({ _id: r.gameId }, { $inc: { 'stats.keysAvailable': r.qty, 'stats.keysSold': -r.qty } });
     // keep the items as a record of what was attempted, but drop the key
     // references that were just released
     await Order.updateOne(

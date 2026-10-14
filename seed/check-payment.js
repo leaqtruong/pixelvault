@@ -238,6 +238,19 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
     await db.collection('payments').deleteMany({});
     await db.collection('gamekeys').updateMany({ status: 'sold' },
       { $set: { status: 'available', order: null, user: null, soldAt: null } });
+    // Handing keys back by writing to the database bypasses the application, so
+    // the stats counter it decremented during the run is never restored. Recompute
+    // it from the inventory, otherwise --clean leaves the store badges showing a
+    // stock level that no longer matches the key rows.
+    const perGame = await db.collection('gamekeys').aggregate([
+      { $match: { status: 'available' } },
+      { $group: { _id: '$game', n: { $sum: 1 } } },
+    ]).toArray();
+    const realStock = new Map(perGame.map((r) => [String(r._id), r.n]));
+    for (const g of await db.collection('games').find({}).toArray()) {
+      await db.collection('games').updateOne({ _id: g._id },
+        { $set: { 'stats.keysAvailable': realStock.get(String(g._id)) || 0 } });
+    }
     await db.collection('games').updateMany({}, { $unset: { 'stats.revenueGross': '' } });
     await db.collection('users').updateMany({ 'devProfile.balanceOwed': { $exists: true } },
       { $set: { 'devProfile.balanceOwed': 0 } });
