@@ -1,0 +1,47 @@
+# Render blueprint for PixelVault.
+#
+# Deploy: push this file, then in Render choose New > Blueprint and point it at
+# the repository. Or create a Web Service by hand with the values below.
+#
+# MongoDB is deliberately NOT declared here. Render's free tier has no
+# persistent disk, so the database must be provided by MongoDB Atlas (the free
+# M0 cluster is enough) or a paid Render MongoDB instance. Put its connection
+# string in the MONGO_URI environment variable.
+
+services:
+  - type: web
+    name: pixelvault
+    runtime: node
+    plan: free
+    region: singapore
+    # `npm ci` for the server, then the client, then build the SPA. The server
+    # serves client/dist as static files, so the build must run before start.
+    buildCommand: npm ci && npm ci --prefix client && npm run build --prefix client
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    # Free instances are replaced after inactivity; sessions live in MongoDB so
+    # a restart does not sign everyone out.
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false # paste the Atlas connection string
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: KEY_ENCRYPTION_SECRET
+        generateValue: true
+      - key: DEV_REVENUE_CUT
+        value: "0.7"
+      - key: TAX_RATE
+        value: "0.08"
+      # Optional: VNPay. Leave unset and checkout uses the built-in sandbox
+      # gateway, which signs with the same algorithm and moves no money.
+      - key: VNP_TMN_CODE
+        sync: false
+      - key: VNP_HASH_SECRET
+        sync: false
+      - key: VNP_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
