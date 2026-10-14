@@ -20,6 +20,10 @@ app.use(session({
 // JSON API for the React SPA
 app.use('/api', require('./routes/api').router);
 
+// Stand-in gateway. Mounted at the root because a real gateway is a different
+// origin — keeping it off /api makes the redirect cross-app in the same shape.
+app.use('/', require('./routes/sandboxGateway'));
+
 // React SPA (built with `npm run build --prefix client`)
 const dist = path.join(__dirname, 'client', 'dist');
 if (fs.existsSync(path.join(dist, 'index.html'))) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from './api.js';
 import { GameCard, useToast } from './components.jsx';
 
@@ -88,7 +88,10 @@ export function Checkout() {
     const f = new FormData(e.target);
     try {
       const r = await api('/checkout/place', { method: 'POST', body: { method, fullName: f.get('fullName'), street: f.get('street'), city: f.get('city'), region: f.get('region'), postal: f.get('postal'), country: f.get('country') || 'US', phone: f.get('phone') } });
-      nav('/orders/' + r.orderId);
+      // Nothing is delivered here. The order is pending until the gateway
+      // signs its callback and this store verifies that signature.
+      sessionStorage.setItem('pv:return', '/orders/' + r.orderId);
+      window.location.href = r.paymentUrl;
     } catch (er) { setErr(er.message); }
   };
   if (err && !d) return <p className="err">{err}</p>;
@@ -114,8 +117,13 @@ export function Checkout() {
           <input name="street" placeholder="Street" defaultValue={addr.street} required />
           <div className="row"><input name="city" placeholder="City" defaultValue={addr.city} required /><input name="postal" placeholder="ZIP" defaultValue={addr.postal} required /></div>
           <div className="row"><input name="country" placeholder="Country" defaultValue={addr.country || 'US'} /><input name="phone" placeholder="Phone" defaultValue={addr.phone} /></div>
-          <h3>3 · Payment (demo)</h3>
+          <h3>3 · Payment</h3>
           <button className="cta-btn big">Pay ${d.grand.toFixed(2)} →</button>
+          <p className="tiny" style={{ marginTop: 10, marginBottom: 0 }}>
+            You will be taken to the payment gateway to confirm. Keys are only
+            delivered once the store has verified the gateway&apos;s signed
+            callback — abandoning the gateway costs nothing and holds no stock.
+          </p>
         </form>
         {err && <p className="err">{err}</p>}
       </div>
@@ -130,6 +138,82 @@ export function Checkout() {
     </>
   );
 }
+
+/* Where the gateway sends the shopper back to. It does not trust the query
+   string: it hands the parameters to the store, which checks the signature and
+   settles the payment, then this page reports what actually happened. */
+export function PaymentReturn() {
+  const [sp] = useSearchParams();
+  const [d, setD] = useState({ state: 'checking' });
+  const nav = useNavigate();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const qs = sp.toString();
+      try {
+        const r = await api('/payment/return' + (qs ? '?' + qs : ''));
+        if (cancelled) return;
+        if (r.already && r.ok) setD({ state: 'done', message: 'This payment was already confirmed.', orderId: r.orderId });
+        else if (r.ok) setD({ state: 'done', message: 'Payment confirmed.', orderId: r.orderId, live: r.live });
+        else setD({ state: 'failed', message: REASON[r.reason] || r.error || r.reason || 'The payment did not complete.', orderId: r.orderId });
+      } catch (er) {
+        if (!cancelled) setD({ state: 'failed', message: er.message });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sp]);
+
+  const back = d.orderId ? '/orders/' + d.orderId : (sessionStorage.getItem('pv:return') || '/orders');
+  const again = () => { window.location.href = '/checkout'; };
+
+  return (
+    <>
+      <h1>Payment</h1>
+      <div className="panel">
+        {d.state === 'checking' && <p className="muted">Verifying the gateway signature…</p>}
+
+        {d.state === 'done' && (
+          <>
+            <h3>Payment confirmed</h3>
+            <p>{d.message} Your keys are in the library.</p>
+            <p className="tiny">
+              The store recomputed the HMAC-SHA512 signature over the returned parameters and
+              matched it against the one it issued. Only then were keys claimed — a forged or
+              altered callback releases nothing.
+            </p>
+            <p className="row" style={{ marginBottom: 0 }}>
+              <Link className="cta-btn" to={back}>View order</Link>
+              <Link className="ghost-btn" to="/library">Open library</Link>
+            </p>
+          </>
+        )}
+
+        {d.state === 'failed' && (
+          <>
+            <h3>Payment not completed</h3>
+            <p className="err">{d.message}</p>
+            <p className="tiny">
+              Nothing was reserved. Your basket is still intact and no stock was held, so you can
+              try again.
+            </p>
+            <p className="row" style={{ marginBottom: 0 }}>
+              <button className="cta-btn" onClick={again}>Try again</button>
+              <Link className="ghost-btn" to="/cart">Back to cart</Link>
+            </p>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+const REASON = {
+  'invalid-signature': 'The gateway signature did not match. The request was rejected and nothing was delivered.',
+  'unknown-payment': 'No matching payment was found for this reference.',
+  'order-missing': 'The order behind this payment no longer exists.',
+  'already-settled': 'This payment had already been processed.',
+};
 
 export function Orders() {
   const [d, setD] = useState(null);

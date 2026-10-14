@@ -4,7 +4,7 @@ import { api, waitForDb } from './api.js';
 import { Layout, ToastHost } from './components.jsx';
 import { BUILD } from './version.js';
 import { Home, Store, GameDetail, Toys, ToyDetail } from './pages-shop.jsx';
-import { Cart, Checkout, Orders, OrderDetail, Library, Recommendations } from './pages-trade.jsx';
+import { Cart, Checkout, Orders, OrderDetail, Library, Recommendations, PaymentReturn } from './pages-trade.jsx';
 import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevSales, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings } from './pages-user.jsx';
 
 export default function App() {
@@ -74,6 +74,7 @@ export default function App() {
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout" element={me ? <Checkout /> : <Navigate to="/login" />} />
           <Route path="/orders" element={me ? <Orders /> : <Navigate to="/login" />} />
+          <Route path="/payment/return" element={<PaymentReturn />} />
           <Route path="/orders/:id" element={me ? <OrderDetail /> : <Navigate to="/login" />} />
           <Route path="/library" element={me ? <Library /> : <Navigate to="/login" />} />
           <Route path="/recommendations" element={me ? <Recommendations /> : <Navigate to="/login" />} />

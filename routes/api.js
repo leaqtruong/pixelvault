@@ -8,8 +8,11 @@ const Toy = require('../models/Toy');
 const Review = require('../models/Review');
 const Mod = require('../models/Mod');
 const Post = require('../models/Post');
+const Payment = require('../models/Payment');
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const { decryptKey } = require('../lib/keyCrypto');
+const gateway = require('../lib/paymentGateway');
 
 const router = express.Router();
 
@@ -366,83 +369,292 @@ router.get('/checkout/summary', needLogin, async (req, res) => {
   res.json({ items, subtotal, tax, shipCost: cost, grand: +(subtotal + tax + cost).toFixed(2), method, quote, taxRate: TAX_RATE, addresses: user.addresses || [] });
 });
 
+/* Fulfil a paid order: claim one key per digital unit, draw down physical and
+ * toy stock, credit the developer, and add everything to the buyer's library.
+ *
+ * Keys are only claimed here — after the gateway signature has been verified.
+ * Claiming them at checkout meant an abandoned basket held real stock.
+ *
+ * Idempotent: the order is marked 'paid' first, so a retry (a second callback,
+ * a double click) returns early instead of claiming keys twice. Key claiming
+ * itself is a single-document findOneAndUpdate, which is atomic without a
+ * replica set, and any keys taken before a later failure are released. */
+async function fulfilOrder(order) {
+  if (!order || order.status !== 'pending') return { ok: true, already: true };
+
+  // mark first so a concurrent retry cannot start a second fulfilment
+  const claimed = await Order.findOneAndUpdate(
+    { _id: order._id, status: 'pending' },
+    { $set: { status: 'paid', paidAt: new Date() } },
+    { new: true },
+  );
+  if (!claimed) return { ok: true, already: true };
+  order = claimed;
+
+  const claimedKeyIds = [];
+  const decPhys = [];
+  const decToys = [];
+  const devPayouts = [];
+  try {
+    for (const it of order.items) {
+      if (it.kind === 'toy') {
+        const t = await Toy.findOneAndUpdate(
+          { _id: it.toy, stock: { $gte: it.qty } },
+          { $inc: { stock: -it.qty, 'stats.unitsSold': it.qty } },
+          { new: true },
+        );
+        if (!t) throw new Error(`${it.title} is out of stock.`);
+        decToys.push({ toyId: t._id, qty: it.qty });
+        await Toy.updateOne({ _id: t._id }, { $inc: { 'stats.revenueGross': +(it.unitPrice * it.qty).toFixed(2) } });
+        it.shipmentId = undefined;
+        continue;
+      }
+
+      const g = await Game.findById(it.game);
+      if (!g) throw new Error(`${it.title} is no longer listed.`);
+
+      if (it.edition === 'physical') {
+        const updated = await Game.findOneAndUpdate(
+          { _id: g._id, 'physical.stock': { $gte: it.qty } },
+          { $inc: { 'physical.stock': -it.qty, 'stats.unitsPhysical': it.qty } },
+          { new: true },
+        );
+        if (!updated) throw new Error(`${g.title} physical stock insufficient.`);
+        decPhys.push({ gameId: g._id, qty: it.qty });
+      } else if (it.unitPrice > 0) {
+        for (let k = 0; k < it.qty; k++) {
+          const key = await GameKey.claimOne(g._id, { orderId: order._id, userId: order.user });
+          if (!key) throw new Error(`${g.title} is out of digital keys.`);
+          claimedKeyIds.push(key._id);
+          it.keyIds.push(key._id);
+        }
+        await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': it.qty, 'stats.keysSold': it.qty, 'stats.keysAvailable': -it.keyIds.length } });
+      } else {
+        await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': it.qty } });
+      }
+
+      const gross = +(it.unitPrice * it.qty).toFixed(2);
+      await Game.updateOne({ _id: g._id }, { $inc: { 'stats.revenueGross': gross } });
+      devPayouts.push({ developer: g.developer, game: g._id, gross, cut: +(gross * DEV_CUT).toFixed(2) });
+      await User.updateOne({ _id: g.developer }, { $inc: { 'devProfile.balanceOwed': +(gross * DEV_CUT).toFixed(2) } });
+    }
+  } catch (e) {
+    if (claimedKeyIds.length) {
+      await GameKey.updateMany({ _id: { $in: claimedKeyIds } },
+        { $set: { status: 'available', order: null, user: null, soldAt: null } });
+    }
+    for (const r of decPhys) await Game.updateOne({ _id: r.gameId }, { $inc: { 'physical.stock': r.qty, 'stats.unitsPhysical': -r.qty } });
+    for (const r of decToys) await Toy.updateOne({ _id: r.toyId }, { $inc: { stock: r.qty, 'stats.unitsSold': -r.qty } });
+    // keep the items as a record of what was attempted, but drop the key
+    // references that were just released
+    await Order.updateOne(
+      { _id: order._id },
+      { $set: { status: 'failed', failureReason: e.message } },
+    );
+    await Order.updateOne({ _id: order._id }, { $set: { 'items.$[].keyIds': [] } });
+    return { ok: false, error: e.message };
+  }
+
+  /* Mutating it.keyIds on a loaded document changes nothing on disk — Mongoose
+   will not write a subdocument array back on its own. Without this the order is
+   paid and the inventory has moved, but the order records no key. */
+  await Order.updateOne(
+    { _id: order._id },
+    { $set: { items: order.items.map((it) => (typeof it.toObject === 'function' ? it.toObject() : it)) } },
+  );
+  await GameKey.updateMany({ order: order._id }, { $set: { order: order._id } });
+  if (devPayouts.length) await Order.updateOne({ _id: order._id }, { $set: { devPayouts } });
+
+  const user = await User.findById(order.user);
+  if (user) {
+    for (const it of order.items) {
+      if (it.kind === 'toy') {
+        const has = (user.toyLibrary || []).some((e) => String(e.toy) === String(it.toy));
+        if (has) user.toyLibrary.find((e) => String(e.toy) === String(it.toy)).qty += it.qty;
+        else user.toyLibrary.push({ toy: it.toy, qty: it.qty });
+      } else if (!user.ownsGame(it.game)) {
+        user.library.push({ game: it.game, edition: it.edition });
+      }
+    }
+    if (!user.purchaseHistory.some((p) => String(p) === String(order._id))) user.purchaseHistory.push(order._id);
+    await user.save();
+  }
+  return { ok: true };
+}
+
+/* Step 1 of the gateway flow: snapshot the basket into a pending order and
+ * hand back a URL to send the shopper to. Nothing is reserved or claimed yet —
+ * if they abandon the gateway, no stock is held. */
 router.post('/checkout/place', needLogin, async (req, res) => {
   const items = getCart(req);
   if (!items.length) return res.status(400).json({ error: 'Cart is empty' });
   const { method = 'standard', fullName, street, city, region, postal, country = 'US', phone, cardLast4 = '4242' } = req.body;
   const hasPhysical = items.some((i) => i.edition === 'physical' || (i.kind || 'game') === 'toy');
   if (hasPhysical && (!fullName || !street || !city || !postal)) return res.status(400).json({ error: 'Shipping address incomplete.' });
+
   const subtotal = +items.reduce((s, i) => s + i.unitPrice * i.qty, 0).toFixed(2);
   const { cost: shipCost } = shippingQuote(items, method);
   const tax = +(subtotal * TAX_RATE).toFixed(2);
   const grandTotal = +(subtotal + tax + shipCost).toFixed(2);
-  const orderItems = []; const devPayouts = []; const claimedKeyIds = [];
-  const decPhys = []; const decToys = [];
-  try {
-    for (const i of items) {
-      if ((i.kind || 'game') === 'toy') {
-        const t = await Toy.findOneAndUpdate({ _id: i.toyId, stock: { $gte: i.qty } }, { $inc: { stock: -i.qty, 'stats.unitsSold': i.qty } }, { new: true });
-        if (!t) throw new Error(`${i.title} is out of stock.`);
-        decToys.push({ toyId: t._id, qty: i.qty });
-        const gross = +(i.unitPrice * i.qty).toFixed(2);
-        t.stats.revenueGross = +((t.stats.revenueGross || 0) + gross).toFixed(2);
-        await t.save();
-        orderItems.push({ kind: 'toy', toy: t._id, title: t.title, edition: 'physical', unitPrice: i.unitPrice, qty: i.qty, weightLb: i.weightLb || 0, keyIds: [] });
-        continue;
-      }
-      const g = await Game.findById(i.gameId);
-      if (!g) continue;
-      let keyIds = [];
-      if (i.edition === 'physical') {
-        const updated = await Game.findOneAndUpdate({ _id: g._id, 'physical.stock': { $gte: i.qty } }, { $inc: { 'physical.stock': -i.qty, 'stats.unitsPhysical': i.qty } }, { new: true });
-        if (!updated) throw new Error(`${g.title} physical stock insufficient.`);
-        decPhys.push({ gameId: g._id, qty: i.qty });
-      } else if (i.unitPrice > 0) {
-        for (let k = 0; k < i.qty; k++) {
-          const claimed = await GameKey.claimOne(g._id, { userId: req.session.user._id });
-          if (!claimed) throw new Error(`${g.title} is out of digital keys.`);
-          claimedKeyIds.push(claimed._id); keyIds.push(claimed._id);
-        }
-        await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': i.qty, 'stats.keysSold': i.qty, 'stats.keysAvailable': -keyIds.length } });
-      } else {
-        await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': i.qty } });
-      }
-      const gross = +(i.unitPrice * i.qty).toFixed(2);
-      await Game.updateOne({ _id: g._id }, { $inc: { 'stats.revenueGross': gross } });
-      orderItems.push({ kind: 'game', game: g._id, title: g.title, edition: i.edition, unitPrice: i.unitPrice, qty: i.qty, weightLb: i.weightLb || 0, keyIds });
-      devPayouts.push({ developer: g.developer, game: g._id, gross, cut: +(gross * DEV_CUT).toFixed(2) });
-      await User.updateOne({ _id: g.developer }, { $inc: { 'devProfile.balanceOwed': +(gross * DEV_CUT).toFixed(2) } });
+
+  // stock is checked now so a basket that cannot be filled is rejected before
+  // the shopper is sent to a gateway, but nothing is decremented yet
+  for (const i of items) {
+    if ((i.kind || 'game') === 'toy') {
+      const t = await Toy.findById(i.toyId).lean();
+      if (!t || t.stock < i.qty) return res.status(400).json({ error: `${i.title} is out of stock.` });
+    } else if (i.edition === 'physical') {
+      const g = await Game.findById(i.gameId).select('physical.stock').lean();
+      if (!g || (g.physical?.stock || 0) < i.qty) return res.status(400).json({ error: `${i.title} physical stock insufficient.` });
     }
-  } catch (e) {
-    if (claimedKeyIds.length) await GameKey.updateMany({ _id: { $in: claimedKeyIds } }, { $set: { status: 'available', order: null, user: null, soldAt: null } });
-    for (const r of decPhys) await Game.updateOne({ _id: r.gameId }, { $inc: { 'physical.stock': r.qty, 'stats.unitsPhysical': -r.qty } });
-    for (const r of decToys) await Toy.updateOne({ _id: r.toyId }, { $inc: { stock: r.qty, 'stats.unitsSold': -r.qty } });
-    return res.status(400).json({ error: e.message });
   }
-  const tracking = hasPhysical ? 'PV-' + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 900 + 100) : undefined;
+
+  const orderItems = items.map((i) => ({
+    kind: i.kind || 'game',
+    game: i.kind === 'toy' ? undefined : i.gameId,
+    toy: i.kind === 'toy' ? i.toyId : undefined,
+    title: i.title,
+    edition: i.edition || 'digital',
+    unitPrice: i.unitPrice,
+    qty: i.qty,
+    weightLb: i.weightLb || 0,
+    keyIds: [],
+  }));
+
+  const tracking = hasPhysical
+    ? 'PV-' + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 900 + 100)
+    : undefined;
+
   const order = await Order.create({
-    user: req.session.user._id, items: orderItems, subtotal, discountTotal: 0, tax, shippingTotal: shipCost, grandTotal,
+    user: req.session.user._id,
+    items: orderItems,
+    subtotal, discountTotal: 0, tax, shippingTotal: shipCost, grandTotal,
+    status: 'pending',
     payment: { method: 'card', last4: String(cardLast4).slice(-4) },
-    shipment: hasPhysical ? { tracking, method, cost: shipCost, address: { fullName, street, city, region, postal, country, phone }, status: 'packing' } : undefined,
-    devPayouts,
+    shipment: hasPhysical
+      ? { tracking, method, cost: shipCost, address: { fullName, street, city, region, postal, country, phone }, status: 'packing' }
+      : undefined,
+    devPayouts: [],
   });
-  const user = await User.findById(req.session.user._id);
-  for (const oi of orderItems) {
-    if (oi.kind === 'toy') {
-      const has = (user.toyLibrary || []).some((e) => String(e.toy) === String(oi.toy));
-      if (has) user.toyLibrary.find((e) => String(e.toy) === String(oi.toy)).qty += oi.qty;
-      else user.toyLibrary.push({ toy: oi.toy, qty: oi.qty });
-    } else if (!user.ownsGame(oi.game)) user.library.push({ game: oi.game, edition: oi.edition });
+
+  const gatewayOrderId = 'PV' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase();
+  const { url, provider, live } = gateway.createPaymentUrl({
+    // VNPay quotes in the smallest unit; the sandbox uses the same convention
+    amount: Math.round(grandTotal * 100),
+    orderId: gatewayOrderId,
+    orderInfo: `PixelVault order ${order._id}`,
+    ipAddr: req.ip,
+    returnUrl: `${req.protocol}://${req.get('host')}/payment/return`,
+    bankCode: req.body.bankCode,
+    locale: 'vn',
+  });
+
+  await Payment.create({
+    orderId: gatewayOrderId,
+    gatewayOrderId,
+    user: req.session.user._id,
+    order: order._id,
+    amount: grandTotal,
+    description: `PixelVault order ${order._id}`,
+    provider,
+    live,
+    status: 'pending',
+    bankCode: req.body.bankCode || '',
+  });
+
+  // keep the basket until the payment settles: a failed payment should let the
+  // shopper retry without rebuilding the cart
+  req.session.pendingPayment = gatewayOrderId;
+  res.json({ ok: true, orderId: order._id, paymentUrl: url, provider, live, amount: grandTotal });
+});
+
+/* Shared by the browser redirect and the gateway's server-to-server notice.
+ * Verifies the signature, then settles exactly once. */
+async function settleFromCallback(query, source, req) {
+  if (!gateway.verifyCallback(query)) return { ok: false, reason: 'invalid-signature' };
+
+  const gatewayOrderId = String(query.vnp_TxnRef || '');
+  const responseCode = String(query.vnp_ResponseCode || '');
+  const transactionNo = String(query.vnp_TransactionNo || '');
+  const successful = responseCode === '00';
+
+  const payment = await Payment.findOne({ gatewayOrderId });
+  if (!payment) return { ok: false, reason: 'unknown-payment' };
+
+  // claim first: only one callback can move pending -> terminal
+  const won = await Payment.claim(gatewayOrderId, {
+    status: successful ? 'success' : 'failed',
+    responseCode,
+    gatewayTransactionNo: transactionNo,
+    rawCallback: query,
+    failureReason: successful ? '' : `gateway response ${responseCode}`,
+  });
+
+  if (!won) {
+    const settled = await Payment.findOne({ gatewayOrderId }).lean();
+    return {
+      ok: settled.status === 'success',
+      already: true,
+      status: settled.status,
+      orderId: settled.order,
+      reason: 'already-settled',
+      source,
+    };
   }
-  user.purchaseHistory.push(order._id);
-  if (hasPhysical) {
-    const exists = user.addresses.some((a) => a.street === street && a.postal === postal);
-    if (exists === false) user.addresses.push({ label: 'Checkout', fullName, street, city, region, postal, country, phone });
+
+  const order = await Order.findById(won.order);
+  if (!order) return { ok: false, reason: 'order-missing' };
+
+  if (!successful) {
+    await Order.updateOne({ _id: order._id, status: 'pending' }, { $set: { status: 'cancelled' } });
+    return { ok: false, status: 'failed', reason: `gateway response ${responseCode}`, orderId: order._id, source };
   }
-  await user.save();
-  if (claimedKeyIds.length) await GameKey.updateMany({ _id: { $in: claimedKeyIds } }, { $set: { order: order._id } });
-  req.session.cart = [];
-  res.json({ ok: true, orderId: order._id });
+
+  const done = await fulfilOrder(order);
+
+  // Empty the basket only once the money is actually confirmed. Leaving it
+  // populated would re-order everything on the next checkout, taking a second
+  // key for every item already bought. On failure it is deliberately kept, so
+  // a declined card can be retried without rebuilding the cart.
+  if (done.ok && req && req.session && req.session.user &&
+      String(req.session.user._id) === String(order.user)) {
+    req.session.cart = [];
+    delete req.session.pendingPayment;
+  }
+
+  return {
+    ok: !!done.ok,
+    already: !!done.already,
+    status: done.ok ? 'success' : 'failed',
+    error: done.error,
+    orderId: order._id,
+    live: won.live,
+    source,
+  };
+}
+
+router.get('/payment/return', async (req, res) => {
+  const result = await settleFromCallback(req.query, 'return', req);
+  // the SPA reads this; a gateway callback must never be redirected as JSON
+  res.json(result);
+});
+
+router.get('/payment/ipn', async (req, res) => {
+  // no session here — it is a server-to-server notice
+  const result = await settleFromCallback(req.query, 'ipn', null);
+  res.json({ RspCode: result.reason === 'invalid-signature' ? '97' : '00', Message: result.reason || result.status, ...result });
+});
+
+router.get('/payment/:gatewayOrderId', needLogin, async (req, res) => {
+  const p = await Payment.findOne({ gatewayOrderId: req.params.gatewayOrderId, user: req.session.user._id }).lean();
+  if (!p) return res.status(404).json({ error: 'Payment not found' });
+  res.json({
+    payment: {
+      status: p.status, amount: p.amount, provider: p.provider, live: p.live,
+      responseCode: p.responseCode, transactionNo: p.gatewayTransactionNo,
+      createdAt: p.createdAt, settledAt: p.settledAt, orderId: p.order,
+    },
+  });
 });
 
 function withPlainKeys(order) {

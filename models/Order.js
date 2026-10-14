@@ -34,7 +34,9 @@ const orderSchema = new mongoose.Schema({
   tax: Number,
   shippingTotal: Number,
   grandTotal: Number,
-  status: { type: String, enum: ['pending', 'paid', 'fulfilled', 'partially_shipped', 'shipped', 'delivered', 'refunded', 'cancelled'], default: 'paid' },
+  status: { type: String, enum: ['pending', 'paid', 'fulfilled', 'partially_shipped', 'shipped', 'delivered', 'refunded', 'cancelled'], default: 'pending' },
+  paidAt: Date,
+  failureReason: String,
   payment: {
     method: { type: String, default: 'card' },
     last4: String
