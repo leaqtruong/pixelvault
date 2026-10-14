@@ -281,12 +281,12 @@ export function Dev() {
                     </form>
                   )}
                 </td>
-                <td className="num">${g.price.toFixed(2)}</td>
+                <td className="num">${Number(g.price || 0).toFixed(2)}</td>
                 <td className="num" style={(g.price > 0 && !g.stats.keysAvailable) ? { color: 'var(--ember)' } : undefined}>
                   {(g.price || 0) > 0 ? g.stats.keysAvailable || 0 : '—'}
                 </td>
                 <td className="num">{g.physical?.enabled ? g.physical.stock : '—'}</td>
-                <td className="num">${g.stats.revenueGross.toFixed(2)}</td>
+                <td className="num">${Number((g.stats && g.stats.revenueGross) || 0).toFixed(2)}</td>
                 <td className="tiny">{g.status}</td>
                 <td>
                   <Link className="ghost-btn sm" to={`/dev/keys/${g._id}`}>Keys</Link>{' '}

@@ -251,7 +251,10 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
       await db.collection('games').updateOne({ _id: g._id },
         { $set: { 'stats.keysAvailable': realStock.get(String(g._id)) || 0 } });
     }
-    await db.collection('games').updateMany({}, { $unset: { 'stats.revenueGross': '' } });
+    // Zero the counter rather than unsetting it: the Dev console reads
+    // stats.revenueGross, and $unset left the field missing on every document,
+    // which made that page throw and blank out.
+    await db.collection('games').updateMany({}, { $set: { 'stats.revenueGross': 0 } });
     await db.collection('users').updateMany({ 'devProfile.balanceOwed': { $exists: true } },
       { $set: { 'devProfile.balanceOwed': 0 } });
     for (const u of await db.collection('users').find({}).toArray()) {

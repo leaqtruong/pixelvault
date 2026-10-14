@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { api, waitForDb } from './api.js';
 import { Layout, ToastHost } from './components.jsx';
@@ -6,6 +6,29 @@ import { BUILD } from './version.js';
 import { Home, Store, GameDetail, Toys, ToyDetail } from './pages-shop.jsx';
 import { Cart, Checkout, Orders, OrderDetail, Library, Recommendations, PaymentReturn } from './pages-trade.jsx';
 import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevSales, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings } from './pages-user.jsx';
+
+/* A single missing or unexpected field used to unmount the whole tree and
+   leave a black page with no clue why. Catch it here and say what happened. */
+class CrashBoundary extends Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err, info) { console.error('page crashed:', err, info?.componentStack); }
+  render() {
+    if (this.state.err) {
+      return (
+        <div className="boot">
+          <p className="logo">PIXEL<span>VAULT</span></p>
+          <p className="tiny">This page hit an unexpected value and stopped rendering.</p>
+          <pre className="mono tiny" style={{ maxWidth: 720, whiteSpace: 'pre-wrap', textAlign: 'left' }}>
+            {String(this.state.err && this.state.err.message || this.state.err)}
+          </pre>
+          <a className="cta-btn sm" href="/">Back to the store</a>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [me, setMe] = useState(null);
@@ -58,6 +81,7 @@ export default function App() {
     </div>
   );
   return (
+    <CrashBoundary>
     <BrowserRouter>
       <div className="bg-fx" aria-hidden="true">
         <span className="shard" /><span className="shard" /><span className="shard" /><span className="shard" />
@@ -98,5 +122,6 @@ export default function App() {
         </ToastHost>
       </Layout>
     </BrowserRouter>
+    </CrashBoundary>
   );
 }
