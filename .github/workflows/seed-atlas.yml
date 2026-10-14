@@ -66,6 +66,9 @@ jobs:
       - name: Import the game catalogue
         run: node seed/import-steam.js
 
+      - name: Add the rest of the catalogue
+        run: node seed/import-more.js
+
       - name: Add real system requirements and Steam metadata
         run: node seed/enrich-steam.js
 
