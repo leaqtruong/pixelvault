@@ -35,6 +35,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
+    # Job level, not step level. GitHub Actions does not carry an `env` block
+    # from one step to the next, so setting it on a single step leaves every
+    # other step without MONGO_URI and the importers exit immediately.
+    # GitHub masks the value in logs automatically.
+    env:
+      MONGO_URI: ${{ secrets.MONGO_URI }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -43,8 +50,6 @@ jobs:
           node-version: '24'
 
       - name: Check the connection string is present
-        env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
         run: |
           if [ -z "$MONGO_URI" ]; then
             echo "MONGO_URI secret is not set. Add it under Settings > Secrets and variables > Actions." >&2
