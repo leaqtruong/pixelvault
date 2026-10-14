@@ -132,7 +132,7 @@ It decrypts every row with the old secret, verifies a round trip, aborts without
 
 | Setting | Value | Why |
 |---|---|---|
-| Build command | `npm ci && npm ci --prefix client && npm run build --prefix client` | the server serves `client/dist`, so the SPA must be built first |
+| Build command | `npm ci --include=dev && npm ci --prefix client --include=dev && npm run build --prefix client` | the server serves `client/dist`, so the SPA must be built first. `--include=dev` is required: `NODE_ENV=production` makes npm skip devDependencies, and vite — the tool that builds the client — is one of them |
 | Start command | `node server.js` | |
 | Health check | `/api/health` | answers even while MongoDB is still connecting |
 | `NODE_ENV` | `production` | marks session cookies `secure` |

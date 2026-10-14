@@ -16,7 +16,11 @@ services:
     region: singapore
     # `npm ci` for the server, then the client, then build the SPA. The server
     # serves client/dist as static files, so the build must run before start.
-    buildCommand: npm ci && npm ci --prefix client && npm run build --prefix client
+    #
+    # --include=dev is not optional. NODE_ENV=production is set, and npm omits
+    # devDependencies when it sees that — which silently drops vite, the tool
+    # that builds the client, and the build dies with "vite: not found".
+    buildCommand: npm ci --include=dev && npm ci --prefix client --include=dev && npm run build --prefix client
     startCommand: node server.js
     healthCheckPath: /api/health
     # Free instances are replaced after inactivity; sessions live in MongoDB so
