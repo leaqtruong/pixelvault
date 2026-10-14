@@ -42,6 +42,24 @@ router.get('/version', (req, res) => {
   res.json({ build: deployedBuild() });
 });
 
+/* Liveness probe, pointed at by the platform's health check.
+ *
+ * It answers 200 whenever the process is up, even with no database yet. MongoDB
+ * often takes longer than the app to come online, and a probe that turned
+ * non-2xx while the connection was still opening would get a perfectly good
+ * deployment marked as failed. Callers that need the database ask for real
+ * endpoints — those answer 503 through the gate below until it is live. */
+router.get('/health', (req, res) => {
+  const state = mongoose.connection.readyState;
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    db: state === 1 ? 'connected' : state === 2 ? 'connecting' : 'disconnected',
+    build: deployedBuild(),
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
+
 // ---------- database gate ----------
 // Mongoose buffers queries issued before the connection is live, then throws
 // "buffering timed out" as an unhandled rejection which kills the whole
