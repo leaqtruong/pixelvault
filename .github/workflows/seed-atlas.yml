@@ -1,0 +1,80 @@
+# Load the catalog into a MongoDB Atlas cluster.
+#
+# Render's free tier has no shell and its filesystem is ephemeral, so the only
+# way to seed a remote cluster from this repository is to run the importers
+# somewhere that can reach Atlas. GitHub Actions is free on a public repository
+# and its runners are not behind the same DNS block as a home network.
+#
+# Setup, once:
+#   1. Settings > Secrets and variables > Actions > New repository secret
+#      Name: MONGO_URI     Value: the mongodb+srv:// connection string
+#   2. Actions > "Seed the Atlas database" > Run workflow
+#
+# The connection string never appears in the log: it is read into the
+# environment, and nothing in this workflow echoes it.
+
+name: Seed the Atlas database
+
+on:
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: 'Workshop pages to mirror per game (30 mods each)'
+        required: false
+        default: '2'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seed-atlas
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check the connection string is present
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+        run: |
+          if [ -z "$MONGO_URI" ]; then
+            echo "MONGO_URI secret is not set. Add it under Settings > Secrets and variables > Actions." >&2
+            exit 1
+          fi
+          echo "connection string is present ($(echo "$MONGO_URI" | wc -c) chars, value not shown)"
+
+      - name: Install server dependencies
+        run: npm ci
+
+      - name: Report what the cluster already holds
+        run: node seed/check-remote.js
+
+      - name: Import the game catalogue
+        run: node seed/import-steam.js
+
+      - name: Add real system requirements and Steam metadata
+        run: node seed/enrich-steam.js
+
+      - name: Mirror mods from the Steam Workshop
+        run: node seed/import-workshop.js --apply --pages ${{ github.event.inputs.pages || '2' }}
+
+      - name: Upgrade cover art to the highest resolution available
+        run: node seed/upgrade-covers.js
+
+      - name: Import the toy catalogue
+        run: node seed/seed-toys.js
+
+      - name: Import reviews
+        run: node seed/seed-reviews.js
+
+      - name: Summarise
+        run: node seed/check-remote.js
