@@ -85,4 +85,7 @@ jobs:
         run: node seed/seed-reviews.js
 
       - name: Summarise
+        # Runs even after a failed step: otherwise a failure leaves no record of
+        # what did and did not make it into the cluster.
+        if: always()
         run: node seed/check-remote.js

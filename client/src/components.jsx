@@ -3,10 +3,18 @@ import { useEffect, useState, createContext, useContext } from 'react';
 import { api, priceOf } from './api.js';
 import { BUILD } from './version.js';
 
+/* Fetches once on mount, so a page opened before a deployment finished
+   importing kept claiming the catalogue was empty. Poll slowly instead. */
 function ApiStatus() {
   const [s, setS] = useState(null);
   useEffect(() => {
-    api('/stats').then((d) => setS(`${d.games} games · ${d.toys} toys`)).catch(() => setS('API offline'));
+    let alive = true;
+    const read = () =>
+      api('/stats').then((d) => { if (alive) setS(`${d.games} games · ${d.toys} toys`); })
+        .catch(() => { if (alive) setS('API offline'); });
+    read();
+    const id = setInterval(read, 30000);
+    return () => { alive = false; clearInterval(id); };
   }, []);
   return <span className="tiny"> · API: {s || '…'}</span>;
 }
