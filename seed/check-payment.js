@@ -5,9 +5,46 @@
  * flow the way an attacker would and checks that nothing is delivered.
  */
 require('dotenv').config();
+
+/* These tests exercise the settlement logic against the local sandbox driver:
+ * the fake gateway page, the tampering checks, the redirect home. Pointing them
+ * at a store configured for the real VNPay host would send every request to an
+ * external service and turn assertions about our own gateway into assertions
+ * about theirs.
+ *
+ * So the suite brings up its own server on a spare port with the merchant
+ * credentials stripped. The .env file is untouched, which means the store the
+ * developer is browsing keeps paying through VNPay while these run. */
+const { spawn } = require('node:child_process');
+
+const PORT = 3101;
+const B = `http://127.0.0.1:${PORT}`;
+
+const serverEnv = { ...process.env };
+// Empty string, not a deleted key: server.js calls dotenv.config(), which only
+// fills in variables that are absent. Removing them would let .env put the
+// real merchant credentials straight back, and the suite would end up talking
+// to the live gateway again.
+for (const k of ['VNP_TMN_CODE', 'VNP_HASH_SECRET', 'VNP_URL']) serverEnv[k] = '';
+serverEnv.PORT = String(PORT);
+// The sandbox gateway URL defaults to port 3000, which is the developer's own
+// store - one that may well be paying through VNPay. Point it at this server.
+serverEnv.SANDBOX_GATEWAY_URL = `http://127.0.0.1:${PORT}/sandbox-gateway`;
+
+const server = spawn('node', ['server.js'], { cwd: process.cwd(), env: serverEnv, stdio: 'ignore' });
+
+const serverUp = new Promise((resolve, reject) => {
+  const give = setTimeout(() => reject(new Error('test server did not start within 30s')), 30000);
+  (async () => {
+    for (;;) {
+      try { const r = await fetch(B + '/api/health'); if (r.ok) { clearTimeout(give); return resolve(); } } catch {}
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  })();
+});
+
 const mongoose = require('mongoose');
 
-const B = 'http://127.0.0.1:3000';
 let cookie = '';
 let bad = 0;
 
@@ -38,6 +75,7 @@ const watchdog = setTimeout(() => {
 watchdog.unref();
 
 const shutdown = async (code) => {
+  try { server.kill(); } catch {}
   try { await mongoose.disconnect(); } catch {}
   clearTimeout(watchdog);
   process.exit(code);
@@ -49,6 +87,8 @@ process.on('unhandledRejection', (e) => {
 });
 
 (async () => {
+  await serverUp;
+  ok('test server up in sandbox mode', true, B);
   await mongoose.connect(process.env.MONGO_URI);
   const db = mongoose.connection.db;
   const Payment = require('../models/Payment');
