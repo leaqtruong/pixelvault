@@ -83,9 +83,13 @@ function mapGame(appid, d, i, art = {}) {
     releaseDate: d.release_date?.date ? new Date(d.release_date.date) : new Date(Date.now() - i * 86400000 * 30),
     modSupport: true,
     steamAppId: appid,
+    /* Counters start at zero and are only ever raised by something that really
+       happened: a page view, a paid order, a review written on this site. The
+       previous import filled them with i*137 and i*410 arithmetic, which put
+       invented revenue on a storefront whose order count was zero. */
     stats: {
-      views: 800 + i * 137, unitsDigital: 150 + i * 17, unitsPhysical: 0,
-      revenueGross: 4000 + i * 410, reviewSum: 40 + (i % 15), reviewCount: 10 + (i % 9),
+      views: 0, unitsDigital: 0, unitsPhysical: 0,
+      revenueGross: 0, reviewSum: 0, reviewCount: 0,
       keysAvailable: 0, keysSold: 0,
     },
   };
@@ -102,6 +106,7 @@ async function main() {
     { username: 'neonforge', email: 'dev@neonforge.gg', passwordHash: pw, role: 'developer', devProfile: { studioName: 'NeonForge', website: 'https://neonforge.gg', payoutEmail: 'pay@neonforge.gg', verified: true, balanceOwed: 0 } },
     { username: 'vaultdweller', email: 'gamer@vault.gg', passwordHash: pw, role: 'user', bio: 'RPG enjoyer. 400h in vault crawlers.' },
     { username: 'modwitch', email: 'mods@vault.gg', passwordHash: pw, role: 'user', bio: 'I break games so you don\u2019t have to.' },
+    { username: 'admin', email: 'admin@pixelvault.gg', passwordHash: pw, role: 'admin', displayName: 'Vault Admin', bio: 'Store operator for the PixelVault demo.' },
   ]);
 
   const games = [];
@@ -122,20 +127,11 @@ async function main() {
     await sleep(1200); // be polite to the store API
   }
 
-  let totalKeys = 0;
-  for (const g of games) {
-    if (g.price <= 0) continue;
-    const docs = [];
-    for (let k = 0; k < 10; k++) {
-      const plain = makeDemoKey('DEMO');
-      docs.push({ game: g._id, batchId: 'steam-import-batch-1', platform: 'Steam', region: 'GLOBAL', codeEnc: encryptKey(plain), codeHash: hashKey(`${g._id}:${plain}`), status: 'available' });
-    }
-    try {
-      await GameKey.insertMany(docs, { ordered: false });
-      totalKeys += docs.length;
-      await Game.updateOne({ _id: g._id }, { $set: { 'stats.keysAvailable': docs.length } });
-    } catch { /* skip dupes */ }
-  }
+  /* No key inventory is created. Keys are obtained from the supplier when a
+     paid order is fulfilled, so pre-generating DEMO keys here only ever
+     produced a "650 keys in stock" figure that meant nothing — we were filling
+     a shelf with keys this same repository had just made. */
+  const totalKeys = 0;
 
   await Post.create([
     { board: 'general', title: 'Welcome to the Vault — real catalog is live', body: 'Catalog now mirrors games actually installed on this machine (Terraria, Limbus Company, Hollow Knight, CS2...). Images/names from Steam Store API for coursework. Keys are DEMO placeholders.', author: dev._id, pinned: true, tags: ['meta'] },

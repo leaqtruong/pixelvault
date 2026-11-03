@@ -53,15 +53,15 @@ const B = 'http://127.0.0.1:3000';
   const home = await fetch(B + '/api/home').then((r) => r.json());
   ok('home ledger titles match', home.ledger.titles === gCount, `api=${home.ledger.titles} db=${gCount}`);
 
-  // native-driver aggregate() returns a cursor, so it needs toArray()
-  const keyAgg = await db.collection('games').aggregate([
-    { $group: { _id: null, n: { $sum: '$stats.keysAvailable' } } },
-  ]).toArray();
-  const dbKeys = keyAgg[0] ? keyAgg[0].n : 0;
-  ok('ledger key count matches the sum of per-game stock', home.ledger.keys === dbKeys, `api=${home.ledger.keys} db=${dbKeys}`);
+  /* Keys are not stocked: one row exists only after a payment has been
+     settled, so the ledger reports issued keys, not a shelf. */
+  const issued = await db.collection('gamekeys').countDocuments({ status: 'sold' });
+  ok('ledger issued-key count matches the database', home.ledger.keysIssued === issued,
+    `api=${home.ledger.keysIssued} db=${issued}`);
 
-  const freeKeys = await db.collection('gamekeys').countDocuments({ status: 'available' });
-  ok('ledger key count matches the real key inventory', home.ledger.keys === freeKeys, `api=${home.ledger.keys} rows(status=available)=${freeKeys}`);
+  const orderCount = await db.collection('orders').countDocuments({ status: { $ne: 'cancelled' } });
+  ok('ledger order count matches the database', home.ledger.orders === orderCount,
+    `api=${home.ledger.orders} db=${orderCount}`);
 
   // a write must be visible immediately
   const marker = 'dbcheck-' + Date.now();

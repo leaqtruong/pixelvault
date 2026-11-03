@@ -14,7 +14,7 @@ const itemSchema = new mongoose.Schema({
 
 const shipmentSchema = new mongoose.Schema({
   tracking: String,
-  carrier: { type: String, default: 'VaultPost' },
+  carrier: String,
   method: { type: String, enum: ['standard', 'express', 'overnight'], default: 'standard' },
   cost: { type: Number, default: 0 },
   address: {
@@ -34,11 +34,11 @@ const orderSchema = new mongoose.Schema({
   tax: Number,
   shippingTotal: Number,
   grandTotal: Number,
-  status: { type: String, enum: ['pending', 'paid', 'fulfilled', 'partially_shipped', 'shipped', 'delivered', 'refunded', 'cancelled'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'paid', 'failed', 'fulfilled', 'partially_shipped', 'shipped', 'delivered', 'refunded', 'cancelled'], default: 'pending' },
   paidAt: Date,
   failureReason: String,
   payment: {
-    method: { type: String, default: 'card' },
+    method: { type: String, default: 'gateway' },
     last4: String
   },
   shipment: shipmentSchema,

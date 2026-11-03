@@ -52,8 +52,12 @@ const money = (n) => new Intl.NumberFormat('vi-VN').format(Number(n)) + ' ₫';
 
 /* Carry every signed parameter through the form as hidden fields, so adding a
  * bank code cannot disturb the signature the store is about to check. */
+/* Every parameter the store signed travels back with the form, including the
+ * signature itself. Without the signature in the POST there is nothing to
+ * check, and the confirmation below could not tell a request this gateway
+ * served from one an attacker wrote by hand. */
 const hidden = (q) => Object.entries(q)
-  .filter(([k, v]) => k !== 'act' && k !== 'vnp_SecureHash' && k !== 'vnp_BankCode')
+  .filter(([k, v]) => k !== 'act' && k !== 'vnp_BankCode')
   .map(([k, v]) => `<input type="hidden" name="${k}" value="${String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}">`)
   .join('\n      ');
 
@@ -125,21 +129,29 @@ router.get('/sandbox-gateway', (req, res) => {
  * signed parameters untouched. */
 function handleResult(req, res) {
   const act = String((req.body && req.body.act) || '');
-  if (!gateway.verifyCallback(req.query)) {
+  /* Signed parameters can arrive two ways: the gateway's confirm form posts
+   * them as hidden fields, while the payment suite replays the original query
+   * string. Accept either, and drop the fields that were added after signing
+   * (`act`, the bank the shopper picked) before checking the hash. */
+  const carryQuery = Object.keys(req.query || {}).length > 0;
+  const signed = { ...(carryQuery ? req.query : (req.body || {})) };
+  delete signed.act;
+  delete signed.vnp_BankCode;
+  if (!gateway.verifyCallback(signed)) {
     return res.status(400).send(page(
       '<p>Chữ ký yêu cầu không hợp lệ. Cổng thanh toán từ chối xử lý.</p>', 'Thanh toán'));
   }
-  const txnRef = String(req.query.vnp_TxnRef || '');
-  const amount = Number(req.query.vnp_Amount || 0);
-  const returnUrl = String(req.query.vnp_ReturnUrl || '');
+  const txnRef = String(signed.vnp_TxnRef || '');
+  const amount = Number(signed.vnp_Amount || 0);
+  const returnUrl = String(signed.vnp_ReturnUrl || '');
   if (!txnRef || !amount || !returnUrl) return res.status(400).send(page('<p>Yêu cầu không hợp lệ.</p>', 'Thanh toán'));
 
-  const signed = gateway.sandboxResponse({
+  const signedOut = gateway.sandboxResponse({
     txnRef, amount,
     status: act === 'fail' ? 'fail' : 'ok',
-    bankCode: (req.body && req.body.vnp_BankCode) || req.query.vnp_BankCode,
+    bankCode: (req.body && req.body.vnp_BankCode) || signed.vnp_BankCode,
   });
-  res.redirect(302, `${returnUrl}?${gateway.queryOf(signed)}`);
+  res.redirect(302, `${returnUrl}?${gateway.queryOf(signedOut)}`);
 }
 
 router.post('/sandbox-gateway/result', handleResult);

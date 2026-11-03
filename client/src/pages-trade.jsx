@@ -92,7 +92,14 @@ export function Checkout() {
       // signs its callback and this store verifies that signature.
       sessionStorage.setItem('pv:return', '/orders/' + r.orderId);
       window.location.href = r.paymentUrl;
-    } catch (er) { setErr(er.message); }
+    } catch (er) {
+      setErr(er.message);
+      /* The server has already corrected the stored price; reload the summary
+         so the total on screen matches what the retry will charge. */
+      if (er.code === 'price_changed') {
+        api('/checkout/summary?method=' + method).then(setD).catch(() => {});
+      }
+    }
   };
   if (err && !d) return <p className="err">{err}</p>;
   if (!d) return <p className="muted">Loading…</p>;

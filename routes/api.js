@@ -12,7 +12,9 @@ const Payment = require('../models/Payment');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { decryptKey } = require('../lib/keyCrypto');
+const { issueKeys, supplierConfigured } = require('../lib/keyProvider');
 const gateway = require('../lib/paymentGateway');
+const steamPrice = require('../lib/steamPrice');
 
 const router = express.Router();
 
@@ -86,6 +88,11 @@ const needDev = (req, res, next) => {
   if (!['developer', 'admin'].includes(req.session.user.role)) return res.status(403).json({ error: 'Developer required' });
   next();
 };
+const needAdmin = (req, res, next) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Login required' });
+  if (req.session.user.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+  next();
+};
 const me = (req) => (req.session.user ? { _id: req.session.user._id, username: req.session.user.username, role: req.session.user.role, email: req.session.user.email } : null);
 
 // ---------- auth ----------
@@ -106,7 +113,7 @@ router.post('/auth/login', async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
     const { email, password } = req.body;
-    const user = await User.findOne({ email: String(email).toLowerCase() });
+    const user = await User.findOne({ email: String(email).toLowerCase() }).select('+passwordHash');
     if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials.' });
@@ -183,8 +190,11 @@ router.get('/games/:slug', async (req, res) => {
     if (meId) for (const r of reviews) r.helpful = (r.helpful || []).map(String);
     const mods = await Mod.find({ game: game._id, status: 'published' }).sort({ 'stats.downloads': -1 }).limit(6).lean();
     const threads = await Post.find({ game: game._id }).sort({ createdAt: -1 }).limit(5).populate('author', 'username').lean();
-    const keysAvailable = await GameKey.countAvailable(game._id);
-    res.json({ game, reviews, mods, threads, keysAvailable, me: meId || null });
+    /* Nothing to count: a digital key is obtained when the order is fulfilled,
+       so a listing is buyable whenever it has a price. `buyable` replaces the
+       old keysAvailable counter, which could only ever be a made-up number. */
+    const buyable = game.price > 0;
+    res.json({ game, reviews, mods, threads, buyable, supplier: supplierConfigured(), me: meId || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -258,22 +268,23 @@ router.get('/home', async (req, res) => {
       if (g) catTiles.push({ name: c, img: g.coverImage, slug: g.slug });
     }
     // Ledger figures — all counted from the database, never invented.
-    // stats.keysAvailable is a cache for store badges; the ledger is a
-    // headline figure, so it counts the key inventory directly instead of
-    // trusting a counter that can drift when an order is rolled back.
+    // There is no "keys in stock" line any more: keys are not stocked, they are
+    // obtained from the supplier when an order is fulfilled. What is worth
+    // showing instead is how many keys have actually been issued, which is a
+    // fact rather than a promise.
     const published = { status: 'published', productType: { $ne: 'toy' } };
-    const [titles, toyCount, dealsAgg, keysInStock, orderAgg] = await Promise.all([
+    const [titles, toyCount, dealsAgg, keysIssued, orderAgg] = await Promise.all([
       Game.countDocuments(published),
       Toy.countDocuments({ status: 'published' }),
       Game.countDocuments({ ...published, discountPct: { $gt: 0 } }),
-      GameKey.countDocuments({ status: 'available' }),
+      GameKey.countDocuments({ status: 'sold' }),
       Order.countDocuments({ status: { $ne: 'cancelled' } }),
     ]);
     const ledger = {
       titles,
       toys: toyCount,
       onSale: dealsAgg,
-      keys: keysInStock,
+      keysIssued,
       orders: orderAgg,
     };
     res.json({ featured, deals, fresh, threads, toys, catTiles, ledger });
@@ -299,7 +310,11 @@ router.get('/cart', async (req, res) => {
         i.title = g.title; i.slug = g.slug; i.coverImage = g.coverImage;
         i.unitPrice = i.edition === 'physical' ? g.physical.price || g.price + 15 : +(g.price * (1 - g.discountPct / 100)).toFixed(2);
         i.weightLb = i.edition === 'physical' ? g.physical.weightLb || 0.5 : 0;
-        i.stock = g.physical.stock;
+        /* A digital key is obtained from the supplier when the order is
+           fulfilled, so it has no stock. Reporting physical.stock here showed
+           "0 in stock" for every downloadable game. */
+        if (i.edition === 'physical') i.stock = g.physical.stock;
+        else delete i.stock;
       } else dead.push(i.key);
     }
   }
@@ -312,28 +327,37 @@ router.get('/cart', async (req, res) => {
 router.post('/cart/add', async (req, res) => {
   const { gameId, toyId, edition = 'digital', qty = 1 } = req.body;
   const items = getCart(req);
+  const qtyWanted = Math.trunc(Number(qty));
+  if (!Number.isFinite(qtyWanted) || qtyWanted < 1) {
+    return res.status(400).json({ error: 'Quantity must be at least 1.' });
+  }
   if (toyId) {
     const t = await Toy.findById(toyId);
     if (!t || t.status !== 'published') return res.status(404).json({ error: 'Collectible not found' });
-    if ((t.stock || 0) < Number(qty)) return res.status(400).json({ error: `Only ${t.stock} left in stock.` });
     const key = `toy:${toyId}`;
     const found = items.find((i) => i.key === key);
-    if (found) found.qty = Math.min(9, found.qty + Number(qty));
-    else items.push({ key, kind: 'toy', toyId: String(t._id), title: t.title, coverImage: t.coverImage, edition: 'physical', qty: Number(qty), unitPrice: t.price, weightLb: t.weightLb || 1.0 });
+    const nextQty = (found ? found.qty : 0) + qtyWanted;
+    if (nextQty > 9) return res.status(400).json({ error: 'At most 9 units of one item.' });
+    if (nextQty > (t.stock || 0)) return res.status(400).json({ error: `Only ${t.stock} left in stock.` });
+    if (found) found.qty = nextQty;
+    else items.push({ key, kind: 'toy', toyId: String(t._id), title: t.title, coverImage: t.coverImage, edition: 'physical', qty: qtyWanted, unitPrice: t.price, weightLb: t.weightLb || 1.0 });
     return res.json({ ok: true, items });
   }
   const g = await Game.findById(gameId);
   if (!g) return res.status(404).json({ error: 'Game not found' });
-  if (edition === 'physical' && (!g.physical.enabled || g.physical.stock < Number(qty))) return res.status(400).json({ error: 'Physical edition out of stock.' });
-  if (edition !== 'physical' && (g.price || 0) > 0) {
-    const avail = await GameKey.countAvailable(g._id);
-    if (avail < Number(qty)) return res.status(400).json({ error: `Out of digital keys (${avail} left).` });
-  }
   const key = `game:${gameId}:${edition}`;
   const found = items.find((i) => i.key === key);
+  const nextQty = (found ? found.qty : 0) + qtyWanted;
+  if (nextQty > 9) return res.status(400).json({ error: 'At most 9 units of one item.' });
+  if (edition === 'physical' && (!g.physical.enabled || g.physical.stock < nextQty)) {
+    return res.status(400).json({ error: 'Physical edition out of stock.' });
+  }
+  // A digital key is fetched from the supplier when the order is fulfilled, so
+  // there is no stock to check here. Only the price decides whether it is a
+  // keyed product at all.
   const unitPrice = edition === 'physical' ? g.physical.price || g.price + 15 : +(g.price * (1 - g.discountPct / 100)).toFixed(2);
-  if (found) found.qty = Math.min(9, found.qty + Number(qty));
-  else items.push({ key, kind: 'game', gameId: String(g._id), title: g.title, coverImage: g.coverImage, edition, qty: Number(qty), unitPrice, weightLb: edition === 'physical' ? g.physical.weightLb || 0.5 : 0 });
+  if (found) found.qty = nextQty;
+  else items.push({ key, kind: 'game', gameId: String(g._id), title: g.title, coverImage: g.coverImage, edition, qty: qtyWanted, unitPrice, weightLb: edition === 'physical' ? g.physical.weightLb || 0.5 : 0 });
   res.json({ ok: true, items });
 });
 
@@ -342,14 +366,33 @@ router.post('/cart/remove', (req, res) => {
   res.json({ ok: true, items: req.session.cart });
 });
 
-router.post('/cart/qty', (req, res) => {
-  const item = getCart(req).find((i) => i.key === req.body.key);
-  if (item) item.qty = Math.max(1, Math.min(9, Number(req.body.qty)));
-  res.json({ ok: true, items: getCart(req) });
+router.post('/cart/qty', async (req, res) => {
+  const items = getCart(req);
+  const item = items.find((i) => i.key === req.body.key);
+  if (!item) return res.status(404).json({ error: 'Item is not in the cart.' });
+  const qty = Math.trunc(Number(req.body.qty));
+  if (!Number.isFinite(qty) || qty < 1 || qty > 9) {
+    return res.status(400).json({ error: 'Quantity must be between 1 and 9.' });
+  }
+  /* Check the shelf at the moment the number changes, not only when the order
+     is placed. Letting the cart reach 9 while 3 are left means the shopper
+     only learns at the gateway, after choosing a payment method. */
+  if ((item.kind || 'game') === 'toy') {
+    const t = await Toy.findById(item.toyId).select('stock').lean();
+    if (!t) return res.status(404).json({ error: 'Collectible not found.' });
+    if (qty > (t.stock || 0)) return res.status(400).json({ error: `Only ${t.stock} left in stock.` });
+  } else if (item.edition === 'physical') {
+    const g = await Game.findById(item.gameId).select('physical.stock').lean();
+    if (!g) return res.status(404).json({ error: 'Game not found.' });
+    if (qty > (g.physical?.stock || 0)) return res.status(400).json({ error: `Only ${g.physical?.stock || 0} left in stock.` });
+  }
+  item.qty = qty;
+  res.json({ ok: true, items });
 });
 
 // ---------- checkout & orders ----------
 const TAX_RATE = Number(process.env.TAX_RATE || 0.08);
+const VND_PER_USD = Number(process.env.VND_PER_USD || 25000);
 const DEV_CUT = Number(process.env.DEV_REVENUE_CUT || 0.7);
 /* Shipping rates are demo pricing, not a real carrier tariff. They are read
    from .env so they are configuration rather than numbers hidden in code, and
@@ -390,16 +433,18 @@ router.get('/checkout/summary', needLogin, async (req, res) => {
   res.json({ items, subtotal, tax, shipCost: cost, grand: +(subtotal + tax + cost).toFixed(2), method, quote, taxRate: TAX_RATE, addresses: user.addresses || [] });
 });
 
-/* Fulfil a paid order: claim one key per digital unit, draw down physical and
+/* Fulfil a paid order: obtain one key per digital unit, draw down physical and
  * toy stock, credit the developer, and add everything to the buyer's library.
  *
- * Keys are only claimed here — after the gateway signature has been verified.
- * Claiming them at checkout meant an abandoned basket held real stock.
+ * There is no key inventory. Keys are obtained from the supplier at this
+ * moment (lib/keyProvider.js) — never at checkout, because an abandoned
+ * basket must not have taken anything.
  *
  * Idempotent: the order is marked 'paid' first, so a retry (a second callback,
- * a double click) returns early instead of claiming keys twice. Key claiming
- * itself is a single-document findOneAndUpdate, which is atomic without a
- * replica set, and any keys taken before a later failure are released. */
+ * a double click) returns early instead of issuing keys twice. Physical and toy
+ * stock are decremented with a guarded findOneAndUpdate, which is atomic without
+ * a replica set, and anything already taken before a later failure is put back;
+ * keys already issued are revoked rather than returned. */
 async function fulfilOrder(order) {
   if (!order || order.status !== 'pending') return { ok: true, already: true };
 
@@ -412,10 +457,9 @@ async function fulfilOrder(order) {
   if (!claimed) return { ok: true, already: true };
   order = claimed;
 
-  const claimedKeyIds = [];
+  const issuedKeyIds = [];
   const decPhys = [];
   const decToys = [];
-  const decKeys = [];
   const devPayouts = [];
   try {
     for (const it of order.items) {
@@ -444,18 +488,21 @@ async function fulfilOrder(order) {
         if (!updated) throw new Error(`${g.title} physical stock insufficient.`);
         decPhys.push({ gameId: g._id, qty: it.qty });
       } else if (it.unitPrice > 0) {
-        const before = claimedKeyIds.length;
-        for (let k = 0; k < it.qty; k++) {
-          const key = await GameKey.claimOne(g._id, { orderId: order._id, userId: order.user });
-          if (!key) throw new Error(`${g.title} is out of digital keys.`);
-          claimedKeyIds.push(key._id);
-          it.keyIds.push(key._id);
+        /* No inventory to claim from. The key is obtained now, against this
+           paid order. If the supplier is unreachable this throws and the catch
+           below handles the order — see lib/keyProvider.js for why a failure
+           must not be papered over with a locally generated key. */
+        const { source, keys } = await issueKeys({
+          game: g._id, edition: it.edition, orderId: order._id, qty: it.qty,
+        });
+        for (const plain of keys) {
+          const doc = await GameKey.issue(g._id, plain, {
+            orderId: order._id, userId: order.user, source,
+          });
+          issuedKeyIds.push(doc._id);
+          it.keyIds.push(doc._id);
         }
-        // Count only the keys this item took. it.keyIds is cumulative, so
-        // using its length would subtract keys an earlier attempt claimed.
-        const taken = claimedKeyIds.length - before;
-        decKeys.push({ gameId: g._id, qty: taken });
-        await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': it.qty, 'stats.keysSold': it.qty, 'stats.keysAvailable': -taken } });
+        await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': it.qty, 'stats.keysSold': it.qty } });
       } else {
         await Game.updateOne({ _id: g._id }, { $inc: { 'stats.unitsDigital': it.qty } });
       }
@@ -466,18 +513,17 @@ async function fulfilOrder(order) {
       await User.updateOne({ _id: g.developer }, { $inc: { 'devProfile.balanceOwed': +(gross * DEV_CUT).toFixed(2) } });
     }
   } catch (e) {
-    if (claimedKeyIds.length) {
-      await GameKey.updateMany({ _id: { $in: claimedKeyIds } },
-        { $set: { status: 'available', order: null, user: null, soldAt: null } });
+    /* Keys issued before the failure are revoked rather than returned to a
+       shelf — there is no shelf. A buyer must never see a revoked key as
+       still theirs, and nothing may sit in the collection looking available. */
+    if (issuedKeyIds.length) {
+      await GameKey.updateMany({ _id: { $in: issuedKeyIds } },
+        { $set: { status: 'revoked', order: null, user: null } });
     }
     for (const r of decPhys) await Game.updateOne({ _id: r.gameId }, { $inc: { 'physical.stock': r.qty, 'stats.unitsPhysical': -r.qty } });
     for (const r of decToys) await Toy.updateOne({ _id: r.toyId }, { $inc: { stock: r.qty, 'stats.unitsSold': -r.qty } });
-    // The released keys go back to the pool above, so the cached counter has
-    // to go back too. Without this every rollback left stats.keysAvailable
-    // permanently lower than the real inventory and the store badges lied.
-    for (const r of decKeys) await Game.updateOne({ _id: r.gameId }, { $inc: { 'stats.keysAvailable': r.qty, 'stats.keysSold': -r.qty } });
     // keep the items as a record of what was attempted, but drop the key
-    // references that were just released
+    // references that were just revoked
     await Order.updateOne(
       { _id: order._id },
       { $set: { status: 'failed', failureReason: e.message } },
@@ -493,7 +539,6 @@ async function fulfilOrder(order) {
     { _id: order._id },
     { $set: { items: order.items.map((it) => (typeof it.toObject === 'function' ? it.toObject() : it)) } },
   );
-  await GameKey.updateMany({ order: order._id }, { $set: { order: order._id } });
   if (devPayouts.length) await Order.updateOne({ _id: order._id }, { $set: { devPayouts } });
 
   const user = await User.findById(order.user);
@@ -519,9 +564,70 @@ async function fulfilOrder(order) {
 router.post('/checkout/place', needLogin, async (req, res) => {
   const items = getCart(req);
   if (!items.length) return res.status(400).json({ error: 'Cart is empty' });
-  const { method = 'standard', fullName, street, city, region, postal, country = 'US', phone, cardLast4 = '4242' } = req.body;
+  const { method = 'standard', fullName, street, city, region, postal, country = 'US', phone, cardLast4 } = req.body;
   const hasPhysical = items.some((i) => i.edition === 'physical' || (i.kind || 'game') === 'toy');
   if (hasPhysical && (!fullName || !street || !city || !postal)) return res.status(400).json({ error: 'Shipping address incomplete.' });
+
+  /* A second copy of a game the account already owns is not a purchase: the
+     library keeps one entry, while the money leaves twice and a spare key is
+     issued. Refuse before the order exists and drop the duplicate from the
+     basket so the retry can go through with the rest of the cart. Checked
+     before the Steam lookup: there is no point pricing a game that cannot be
+     bought. */
+  const ownedIds = new Set(
+    ((await User.findById(req.session.user._id).select('library').lean())?.library || []).map((e) => String(e.game)),
+  );
+  const duplicates = items.filter(
+    (i) => (i.kind || 'game') !== 'toy' && (i.edition || 'digital') === 'digital' && ownedIds.has(String(i.gameId)),
+  );
+  if (duplicates.length) {
+    const titles = duplicates.map((i) => i.title);
+    req.session.cart = items.filter((i) => !duplicates.includes(i));
+    return res.status(409).json({
+      error: `You already own ${titles.join(', ')}. Removed from your cart.`,
+      code: 'already_owned',
+      owned: duplicates.map((i) => ({ gameId: i.gameId, title: i.title })),
+    });
+  }
+
+  /* Prices in the cart were copied from the catalog, which mirrors Steam as it
+     was on the day it was imported. Confirm them against the live store before
+     creating the order: charging a figure the store no longer offers is wrong
+     in both directions — the shopper overpays when a sale has ended, the shop
+     underpays when one has started.
+     A drift is refused rather than silently adopted, and the cart is rewritten
+     with the real prices so the retry the shopper is about to make is priced
+     correctly. Steam being unreachable is not a drift: see lib/steamPrice.js. */
+  const digitalIds = [...new Set(items
+    .filter((i) => (i.kind || 'game') !== 'toy' && (i.edition || 'digital') === 'digital')
+    .map((i) => String(i.gameId)))].filter(isObjectId);
+  if (digitalIds.length) {
+    const priced = await Game.find({ _id: { $in: digitalIds } }).select('title steamAppId').lean();
+    const byId = new Map(priced.map((g) => [String(g._id), g]));
+    const check = await steamPrice.verify(items, byId);
+    if (check.changes.length || check.unavailable.length) {
+      /* Steam is the source of truth for a mirrored catalogue, so the stale row
+         is corrected rather than only refused. The effective price is stored
+         with no percentage: keeping Steam's initial price plus its discount
+         percentage would re-derive a figure that can sit one cent away from the
+         quote and make every retry fail forever. */
+      for (const c of check.changes) {
+        await Game.updateOne({ _id: c.gameId }, { $set: { price: c.now, discountPct: 0 } });
+        const it = items.find((i) => i.key === c.key);
+        if (it) it.unitPrice = c.now;
+      }
+      const gone = check.unavailable[0];
+      const moved = check.changes[0];
+      return res.status(409).json({
+        error: gone
+          ? `${gone.title} is no longer available on Steam.`
+          : `${moved.title} is now $${moved.now.toFixed(2)} on Steam (was $${moved.was.toFixed(2)}). Review the total and try again.`,
+        code: gone ? 'game_unavailable' : 'price_changed',
+        changes: check.changes,
+        unavailable: check.unavailable,
+      });
+    }
+  }
 
   const subtotal = +items.reduce((s, i) => s + i.unitPrice * i.qty, 0).toFixed(2);
   const { cost: shipCost } = shippingQuote(items, method);
@@ -561,7 +667,9 @@ router.post('/checkout/place', needLogin, async (req, res) => {
     items: orderItems,
     subtotal, discountTotal: 0, tax, shippingTotal: shipCost, grandTotal,
     status: 'pending',
-    payment: { method: 'card', last4: String(cardLast4).slice(-4) },
+    /* VNPay is a hosted gateway: the store never sees a card number, so there
+       is no last4 unless a caller genuinely supplied one. */
+    payment: { method: 'gateway', last4: cardLast4 ? String(cardLast4).slice(-4) : undefined },
     shipment: hasPhysical
       ? { tracking, method, cost: shipCost, address: { fullName, street, city, region, postal, country, phone }, status: 'packing' }
       : undefined,
@@ -569,9 +677,13 @@ router.post('/checkout/place', needLogin, async (req, res) => {
   });
 
   const gatewayOrderId = 'PV' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase();
+  /* Prices are kept in USD, but VNPay quotes VND. Convert here, once, at the
+     boundary: `vnp_Amount` is the smallest VND unit (dong x 100), so a $92.86
+     order becomes 232,150,000 rather than 9,286. The rate is configuration,
+     not a number hidden in code. */
+  const gatewayAmount = Math.round(grandTotal * VND_PER_USD);
   const { url, provider, live } = gateway.createPaymentUrl({
-    // VNPay quotes in the smallest unit; the sandbox uses the same convention
-    amount: Math.round(grandTotal * 100),
+    amount: gatewayAmount * 100,
     orderId: gatewayOrderId,
     orderInfo: `PixelVault order ${order._id}`,
     ipAddr: req.ip,
@@ -585,7 +697,8 @@ router.post('/checkout/place', needLogin, async (req, res) => {
     gatewayOrderId,
     user: req.session.user._id,
     order: order._id,
-    amount: grandTotal,
+    amount: gatewayAmount,
+    currency: 'VND',
     description: `PixelVault order ${order._id}`,
     provider,
     live,
@@ -611,6 +724,13 @@ async function settleFromCallback(query, source, req) {
 
   const payment = await Payment.findOne({ gatewayOrderId });
   if (!payment) return { ok: false, reason: 'unknown-payment' };
+
+  /* The signature proves the gateway sent this callback, and the amount is part
+     of what was signed. Compare it with the amount this store asked for: a
+     callback for a different transaction must not settle this order. */
+  if (successful && Number(query.vnp_Amount) !== Math.round(payment.amount) * 100) {
+    return { ok: false, reason: 'amount-mismatch' };
+  }
 
   // claim first: only one callback can move pending -> terminal
   const won = await Payment.claim(gatewayOrderId, {
@@ -716,6 +836,8 @@ router.get('/orders/:id', needLogin, async (req, res) => {
 // ---------- library ----------
 router.get('/library', needLogin, async (req, res) => {
   const user = await User.findById(req.session.user._id).populate('library.game').populate('wishlist').populate('toyLibrary.toy').populate('toyWishlist').lean();
+  // The library is the owner's view, but the hash is never part of it.
+  delete user.passwordHash;
   const GameKeyM = require('../models/GameKey');
   const keys = await GameKeyM.find({ user: req.session.user._id, status: 'sold' }).populate('game', 'title slug').lean();
   const plainById = {};
@@ -792,7 +914,22 @@ router.get('/users/:username', async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   const orders = await Order.find({ user: user._id }).sort({ createdAt: -1 }).limit(10).lean();
   const isSelf = req.session.user && String(req.session.user._id) === String(user._id);
-  if (!isSelf) { delete user.phone; delete user.purchaseHistory; }
+  /* A public profile is not a copy of the account document. Contact details,
+     wallet, address book and play history belong to the owner only; the hash
+     must never leave the server for anyone. */
+  delete user.passwordHash;
+  if (!isSelf) {
+    delete user.email;
+    delete user.phone;
+    delete user.wallet;
+    delete user.addresses;
+    delete user.playHistory;
+    delete user.purchaseHistory;
+    if (user.devProfile) {
+      delete user.devProfile.payoutEmail;
+      delete user.devProfile.balanceOwed;
+    }
+  }
   res.json({ user, orders: isSelf ? orders : [], isSelf });
 });
 
@@ -905,52 +1042,17 @@ router.post('/dev/:id/edit', needDev, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* Keys are not stocked, so there is nothing to manage here. What a publisher
+ * can see is which keys their game has actually issued, and to revoke one
+ * after the fact if it leaks. */
 router.get('/dev/:id/keys', needDev, async (req, res) => {
   const game = await Game.findOne({ _id: req.params.id, developer: req.session.user._id }).lean();
   if (!game) return res.status(404).json({ error: 'Not found' });
-  const [available, sold, revoked] = await Promise.all([
-    GameKey.countDocuments({ game: game._id, status: 'available' }),
+  const [sold, revoked] = await Promise.all([
     GameKey.countDocuments({ game: game._id, status: 'sold' }),
     GameKey.countDocuments({ game: game._id, status: 'revoked' }),
   ]);
-  res.json({ game, available, sold, revoked });
-});
-
-router.post('/dev/:id/keys/import', needDev, async (req, res) => {
-  const { encryptKey, hashKey } = require('../lib/keyCrypto');
-  const game = await Game.findOne({ _id: req.params.id, developer: req.session.user._id });
-  if (!game) return res.status(404).json({ error: 'Not found' });
-  const parts = String(req.body.keys || '').split(/[\r\n,;]+/).map((s) => s.trim()).filter(Boolean).slice(0, 2000);
-  if (!parts.length) return res.status(400).json({ error: 'No keys found in input.' });
-  const batchId = String(req.body.batchId || `manual-${Date.now().toString(36)}`).slice(0, 40);
-  const platform = ['Steam', 'Epic', 'GOG', 'PixelVault'].includes(req.body.platform) ? req.body.platform : 'Steam';
-  let added = 0;
-  for (const plain of parts) {
-    try {
-      await GameKey.create({ game: game._id, batchId, platform, codeEnc: encryptKey(plain), codeHash: hashKey(`${game._id}:${plain}`), status: 'available' });
-      added++;
-    } catch {}
-  }
-  await Game.updateOne({ _id: game._id }, { $inc: { 'stats.keysAvailable': added } });
-  res.json({ ok: true, added });
-});
-
-router.post('/dev/:id/keys/generate', needDev, async (req, res) => {
-  const { encryptKey, hashKey, makeDemoKey } = require('../lib/keyCrypto');
-  const game = await Game.findOne({ _id: req.params.id, developer: req.session.user._id });
-  if (!game) return res.status(404).json({ error: 'Not found' });
-  const n = Math.min(500, Math.max(1, Number(req.body.count || 20)));
-  const batchId = `demo-${Date.now().toString(36)}`;
-  let added = 0;
-  for (let i = 0; i < n; i++) {
-    const plain = makeDemoKey('DEMO');
-    try {
-      await GameKey.create({ game: game._id, batchId, platform: 'Steam', codeEnc: encryptKey(plain), codeHash: hashKey(`${game._id}:${plain}`), status: 'available' });
-      added++;
-    } catch {}
-  }
-  await Game.updateOne({ _id: game._id }, { $inc: { 'stats.keysAvailable': added } });
-  res.json({ ok: true, added });
+  res.json({ game, sold, revoked, supplier: supplierConfigured() });
 });
 
 // Masked key list — never returns plaintext (owners never need it on this screen).
@@ -960,20 +1062,20 @@ router.get('/dev/:id/keys/list', needDev, async (req, res) => {
   const lim = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
   const keys = await GameKey.find({ game: game._id }).sort({ createdAt: -1 }).limit(lim).lean();
   // codeEnc is iv.tag.data — mask to last 4 chars of the data segment.
-  res.json({ keys: keys.map((k) => ({ _id: k._id, status: k.status, batchId: k.batchId, platform: k.platform, mask: '••••-••••-••••-' + String(k.codeEnc || '').split('.').pop().slice(-4) })) });
+  res.json({ keys: keys.map((k) => ({ _id: k._id, status: k.status, source: k.source, platform: k.platform, soldAt: k.soldAt, mask: '••••-••••-••••-' + String(k.codeEnc || '').split('.').pop().slice(-4) })) });
 });
 
-// Revoke a single available key (blocked once sold).
+/* Revoke a key that has already been sold. This is the only thing that can be
+   done to a key: there is no shelf to pull it off. The buyer must not be able
+   to reveal it again afterwards. */
 router.post('/dev/:id/keys/:keyId/revoke', needDev, async (req, res) => {
   const game = await Game.findOne({ _id: req.params.id, developer: req.session.user._id }).lean();
   if (!game) return res.status(404).json({ error: 'Not found' });
   const k = await GameKey.findOne({ _id: req.params.keyId, game: game._id });
   if (!k) return res.status(404).json({ error: 'Key not found' });
-  if (k.status === 'sold') return res.status(400).json({ error: 'Sold keys cannot be revoked.' });
   if (k.status === 'revoked') return res.json({ ok: true });
   k.status = 'revoked';
   await k.save();
-  await Game.updateOne({ _id: game._id }, { $inc: { 'stats.keysAvailable': -1 } });
   res.json({ ok: true });
 });
 
@@ -1065,6 +1167,61 @@ router.post('/mods/new', needLogin, async (req, res) => {
     status: 'published',
   });
   res.json({ ok: true, id: m._id });
+});
+
+// ---------- admin ----------
+router.get('/admin', needAdmin, async (req, res) => {
+  const [orders, posts, mods, reviews] = await Promise.all([
+    Order.find({}).populate('user', 'username email').sort({ createdAt: -1 }).limit(100).lean(),
+    Post.find({}).populate('author', 'username').sort({ createdAt: -1 }).limit(60).lean(),
+    Mod.find({}).populate('author', 'username').populate('game', 'title slug').sort({ updatedAt: -1 }).limit(60).lean(),
+    Review.find({}).populate('user', 'username').populate('game', 'title slug').sort({ createdAt: -1 }).limit(60).lean(),
+  ]);
+  res.json({ orders, posts, mods, reviews });
+});
+
+/* packing -> shipped -> delivered. The buyer's order page reads the same
+   shipment object, so one click here is visible there on the next load. */
+router.post('/admin/orders/:id/advance', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Order not found' });
+  const o = await Order.findById(req.params.id);
+  if (!o) return res.status(404).json({ error: 'Order not found' });
+  if (!o.shipment) return res.status(400).json({ error: 'Digital order — there is nothing to ship.' });
+  if (!['paid', 'shipped'].includes(o.status)) return res.status(400).json({ error: `Order is ${o.status}; only paid orders can be shipped.` });
+  const flow = ['packing', 'shipped', 'delivered'];
+  const at = flow.indexOf(o.shipment.status);
+  if (at === -1) return res.status(400).json({ error: `Shipment is ${o.shipment.status}; this desk only moves packing → shipped → delivered.` });
+  if (at === flow.length - 1) return res.status(400).json({ error: 'Shipment is already delivered.' });
+  const next = flow[at + 1];
+  o.shipment.status = next;
+  if (next === 'shipped') { o.shipment.shippedAt = new Date(); o.status = 'shipped'; }
+  if (next === 'delivered') { o.shipment.deliveredAt = new Date(); o.status = 'delivered'; }
+  await o.save();
+  res.json({ ok: true, status: o.status, shipment: o.shipment });
+});
+
+router.delete('/admin/posts/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Post not found' });
+  const p = await Post.findByIdAndDelete(req.params.id);
+  if (!p) return res.status(404).json({ error: 'Post not found' });
+  res.json({ ok: true });
+});
+
+router.post('/admin/mods/:id/visibility', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Mod not found' });
+  const hidden = !!req.body.hidden;
+  const m = await Mod.findByIdAndUpdate(req.params.id, { $set: { status: hidden ? 'hidden' : 'published' } }, { new: true });
+  if (!m) return res.status(404).json({ error: 'Mod not found' });
+  res.json({ ok: true, status: m.status });
+});
+
+router.delete('/admin/reviews/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Review not found' });
+  const r = await Review.findByIdAndDelete(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Review not found' });
+  const agg = await Review.aggregate([{ $match: { game: r.game } }, { $group: { _id: null, sum: { $sum: '$stars' }, n: { $sum: 1 } } }]);
+  await Game.updateOne({ _id: r.game }, { $set: { 'stats.reviewSum': agg[0]?.sum || 0, 'stats.reviewCount': agg[0]?.n || 0 } });
+  res.json({ ok: true });
 });
 
 router.get('/stats', async (req, res) => {

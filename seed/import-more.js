@@ -155,16 +155,8 @@ const CANDIDATES = process.argv.includes('--rebuild')
       added++;
       console.log(`[add] ${appid} ${g.title}`);
 
-      if (g.price > 0) {
-        const docs = [];
-        for (let k = 0; k < KEYS_PER_GAME; k++) {
-          const plain = makeDemoKey('DEMO');
-          docs.push({ game: g._id, batchId: 'steam-add-batch-1', platform: 'Steam', region: 'GLOBAL', codeEnc: encryptKey(plain), codeHash: hashKey(`${g._id}:${plain}`), status: 'available' });
-        }
-        await GameKey.insertMany(docs, { ordered: false });
-        keys += docs.length;
-        await Game.updateOne({ _id: g._id }, { $set: { 'stats.keysAvailable': docs.length } });
-      }
+      /* No key inventory is created here — see the same note in
+         import-steam.js. Keys come from the supplier at fulfilment time. */
     } catch (e) {
       skipped.push({ appid, why: e.message });
       console.log(`[add] skip ${appid}: ${e.message}`);

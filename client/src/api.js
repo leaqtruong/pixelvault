@@ -11,7 +11,15 @@ export async function api(path, opts = {}) {
     e.dbDown = true;
     throw e;
   }
-  if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+  if (!r.ok) {
+    const e = new Error(data.error || `Request failed (${r.status})`);
+    /* Callers sometimes need to react to a specific rejection — checkout uses
+       this to refresh the total when Steam reports a price change. */
+    e.status = r.status;
+    e.code = data.code;
+    e.data = data;
+    throw e;
+  }
   return data;
 }
 

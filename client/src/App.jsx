@@ -5,7 +5,7 @@ import { Layout, ToastHost } from './components.jsx';
 import { BUILD } from './version.js';
 import { Home, Store, GameDetail, Toys, ToyDetail } from './pages-shop.jsx';
 import { Cart, Checkout, Orders, OrderDetail, Library, Recommendations, PaymentReturn } from './pages-trade.jsx';
-import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevSales, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings } from './pages-user.jsx';
+import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevSales, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings, Admin } from './pages-user.jsx';
 
 /* A single missing or unexpected field used to unmount the whole tree and
    leave a black page with no clue why. Catch it here and say what happened. */
@@ -35,19 +35,25 @@ export default function App() {
   const [dbUp, setDbUp] = useState(false);
   const [ready, setReady] = useState(false);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('pv-theme') || 'dark'; } catch { return 'dark'; } });
-  // Hold the UI until MongoDB answers, then retry silently in the background.
+  // Keep probing MongoDB in the background; the boot gate below belongs to the
+  // session check, not to this poll.
   useEffect(() => {
     let alive = true;
     waitForDb('/stats', 60, 1500)
-      .then(() => { if (alive) { setDbUp(true); setReady(true); } })
-      .catch(() => { if (alive) setReady(true); });
+      .then(() => { if (alive) setDbUp(true); })
+      .catch(() => {});
     const t = setInterval(() => { if (!alive) return; fetch('/api/stats', { cache: 'no-store' }).then((r) => r.ok && setDbUp(true)).catch(() => {}); }, 4000);
     return () => { alive = false; clearInterval(t); };
   }, []);
+  /* The route guards test `me`, so the UI must stay on the boot screen until
+     /auth/me has answered. Two independent effects used to call setReady: this
+     one and the database poll above. When the poll won the race, a protected
+     route rendered with me still null and redirected a signed-in visitor to
+     /login — visible as a login form under a header that already says Log out.
+     Readiness therefore has exactly one owner: the session check. */
   useEffect(() => {
-    if (!dbUp) return;
     api('/auth/me').then((d) => setMe(d.user)).catch(() => {}).finally(() => setReady(true));
-  }, [dbUp]);
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem('pv-theme', theme); } catch {}
@@ -111,6 +117,7 @@ export default function App() {
           <Route path="/dev/keys/:id" element={<DevKeys />} />
           <Route path="/dev/toys" element={<DevToys />} />
           <Route path="/dev/sales" element={<DevSales />} />
+          <Route path="/admin" element={me ? <Admin /> : <Navigate to="/login" />} />
           <Route path="/community" element={<Community />} />
           <Route path="/community/new" element={<CommunityNew />} />
           <Route path="/community/p/:id" element={<PostDetail />} />

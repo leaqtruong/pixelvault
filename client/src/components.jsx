@@ -70,6 +70,7 @@ function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
                 <Link to="/orders">Orders</Link>
                 <Link to={`/users/${me.username}`}>Profile</Link>
                 <Link to="/settings">Settings</Link>
+                {me.role === 'admin' && <Link to="/admin">Admin desk</Link>}
               </div>
               <div className="rail-cta">
                 <button className="ghost-btn sm" onClick={logout}>Log out</button>
@@ -201,6 +202,7 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
             <Link className={on('/community')} to="/community">Community</Link>
             <Link className={on('/mods')} to="/mods">Mods</Link>
             <Link className={on('/dev')} to="/dev">Dev Portal</Link>
+            {me?.role === 'admin' && <Link className={on('/admin')} to="/admin">Admin</Link>}
             <span className="rule-v" />
             <div className="drop">
               <button>Categories</button>
@@ -303,7 +305,6 @@ export function Pager({ total, totalPages, page, base, query }) {
 export function GameCard({ g, i }) {
   const c = g.stats.reviewCount || 0;
   const avg = c ? g.stats.reviewSum / c : 0;
-  const keys = g.stats.keysAvailable || 0;
   return (
     <Link className="gcard card-enter" style={i !== undefined ? { animationDelay: `${Math.min(i, 11) * 35}ms` } : undefined}
       to={`/games/${g.slug}`}>
@@ -313,7 +314,7 @@ export function GameCard({ g, i }) {
         <span className="genres">{(g.genres || []).slice(0, 2).join(' · ')}</span>
         <span className="tiny">
           {c ? `${avg.toFixed(1)}/5 · ${c} reviews` : 'No user reviews'}
-          {(g.price || 0) > 0 ? (keys > 0 ? ` · ${keys} keys` : ' · out of keys') : ''}
+          {(g.price || 0) > 0 ? ' · key on payment' : ''}
         </span>
         <Price g={g} />
       </div>

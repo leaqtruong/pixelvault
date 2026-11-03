@@ -59,7 +59,10 @@ async function main() {
     };
     await Toy.findOneAndUpdate(
       { title: t.title, brand: t.brand },
-      { $set: doc, $setOnInsert: { stats: { views: 200 + i * 31, unitsSold: 5 + i * 2, revenueGross: 200 + i * 90, reviewSum: 0, reviewCount: 0 } } },
+      /* Real units sold and real money, same rule as import-steam.js: a counter
+         only moves when something actually happened. Stock comes from the
+         listing below; views and revenue do not exist until there are any. */
+      { $set: doc, $setOnInsert: { stats: { views: 0, unitsSold: 0, revenueGross: 0, reviewSum: 0, reviewCount: 0 } } },
       { upsert: true }
     );
     n++;

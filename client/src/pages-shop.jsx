@@ -62,7 +62,7 @@ function SplitHero({ items, ledger }) {
         </div>
         <div className="ledger-grid">
           <div className="ledger-item"><span className="k">Titles</span><span className="v">{ledger.titles}</span></div>
-          <div className="ledger-item"><span className="k">Keys in stock</span><span className="v">{Number(ledger.keys).toLocaleString()}</span></div>
+          <div className="ledger-item"><span className="k">Keys issued</span><span className="v">{Number(ledger.keysIssued || 0).toLocaleString()}</span></div>
           <div className="ledger-item"><span className="k">On offer</span><span className="v">{ledger.onSale}</span></div>
           <div className="ledger-item"><span className="k">Collectibles</span><span className="v">{ledger.toys}</span></div>
           <div className="ledger-item"><span className="k">Orders</span><span className="v">{ledger.orders}</span></div>
@@ -95,7 +95,7 @@ export function Home() {
     seen.add(g._id);
     return true;
   }).slice(0, 8);
-  const L = d.ledger || { titles: 0, keys: 0, onSale: 0, avgOff: 0, toys: 0, orders: 0 };
+  const L = d.ledger || { titles: 0, keysIssued: 0, onSale: 0, avgOff: 0, toys: 0, orders: 0 };
 
   return (
     <>
@@ -121,11 +121,10 @@ export function Home() {
             <Link className="more" to="/games?onSale=1">All offers</Link></div>
           <table className="ptable">
             <thead><tr>
-              <th><span className="tiny">Art</span></th><th>Title</th><th>Genre</th><th>Was</th><th>Now</th><th>Off</th><th>Stock</th>
+              <th><span className="tiny">Art</span></th><th>Title</th><th>Genre</th><th>Was</th><th>Now</th><th>Off</th><th>Key</th>
             </tr></thead>
             <tbody>
               {d.deals.map((g) => {
-                const keys = g.stats.keysAvailable || 0;
                 return (
                   <tr key={g._id}>
                     <td><img className="t-art" src={g.coverImage} loading="lazy" alt="" /></td>
@@ -134,7 +133,7 @@ export function Home() {
                     <td className="t-was">${g.price.toFixed(2)}</td>
                     <td className="t-now">${priceOf(g).toFixed(2)}</td>
                     <td><span className="t-off">-{g.discountPct}%</span></td>
-                    <td className={'t-keys' + (keys ? '' : ' none')}>{keys ? keys + ' keys' : 'out'}</td>
+                    <td className="t-keys">on demand</td>
                   </tr>
                 );
               })}
@@ -313,8 +312,11 @@ export function GameDetail({ me }) {
   const nav = useNavigate();
   if (err) return <p className="err">{err}</p>;
   if (!d) return <p className="muted">Loading…</p>;
-  const { game, reviews, mods, threads, keysAvailable } = d;
-  const outOfKeys = (game.price || 0) > 0 && (keysAvailable || 0) === 0;
+  const { game, reviews, mods, threads } = d;
+  // No stock figure exists any more: the key is obtained from the supplier when
+  // the order is fulfilled, so a priced listing is always buyable.
+  const outOfKeys = false;
+  const keyMode = d.supplier ? 'key is issued by the publisher on payment' : 'key is issued on payment';
   const shots = (game.screenshots && game.screenshots.length ? game.screenshots : [game.coverImage]);
   // Mongoose Maps do not survive JSON, so normalise them here.
   const asObj = (m) => (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
@@ -541,9 +543,7 @@ export function GameDetail({ me }) {
           <div className="buy-area">
             <h4>{(game.price || 0) > 0 ? 'Digital edition' : 'Free to play'}</h4>
             {(game.price || 0) > 0
-              ? <p className="tiny" style={outOfKeys ? { color: 'var(--ember)' } : undefined}>
-                  {keysAvailable} keys in stock{outOfKeys ? ' — sold out' : ''}
-                </p>
+              ? <p className="tiny">{keyMode} — nothing is held in stock.</p>
               : <p className="tiny">No key needed.</p>}
             <div className="row">
               <button className="cta-btn sm" disabled={outOfKeys} onClick={() => add('digital')}>Add to cart</button>

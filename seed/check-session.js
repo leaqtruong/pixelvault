@@ -88,5 +88,9 @@ const killServers = () => {
   console.log('\n  sessions stored: ' + await sessionsCol.countDocuments({}) + ' (a fresh process reads them back)');
   await mongoose.disconnect();
   console.log(bad ? '\n' + bad + ' FAILURES' : '\nsessions live in MongoDB and survive a process restart');
+  /* The detached server is a live child handle. Calling exit() while Windows is
+     still closing it trips a libuv assertion after the report has already been
+     printed; give the handle a moment to settle. */
+  await new Promise((r) => setTimeout(r, 300));
   process.exit(bad ? 1 : 0);
 })().catch((e) => { console.error('crashed:', e); process.exit(1); });

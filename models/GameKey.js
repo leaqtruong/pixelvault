@@ -1,34 +1,53 @@
 const mongoose = require('mongoose');
+const { encryptKey, hashKey } = require('../lib/keyCrypto');
 
+/* One document per key that has actually been handed to a buyer.
+ *
+ * This collection is a record of what was issued, not a shelf to pick from.
+ * There is no 'available' state: a document only comes into existence at the
+ * moment an order is fulfilled, so "how many keys are in stock" was never a
+ * meaningful question and the counter that pretended to answer it is gone.
+ *
+ * codeEnc still holds the AES-256-GCM payload (iv.tag.data) and codeHash is the
+ * SHA-256 of the plaintext, unique, so the same key can never be issued twice
+ * even if a supplier hands one out by mistake.
+ */
 const keySchema = new mongoose.Schema({
   game: { type: mongoose.Schema.Types.ObjectId, ref: 'Game', required: true, index: true },
-  batchId: { type: String, default: 'seed', index: true },
   platform: { type: String, enum: ['Steam', 'Epic', 'GOG', 'PixelVault'], default: 'Steam' },
   region: { type: String, default: 'GLOBAL' },
-  // AES-256-GCM encrypted payload (iv.tag.data)
+  // which path produced this key: a real supplier, or a locally generated
+  // DEMO placeholder. Stored so it is never ambiguous after the fact.
+  source: { type: String, enum: ['supplier', 'demo'], default: 'demo', index: true },
   codeEnc: { type: String, required: true },
-  // SHA-256 of plaintext for dedupe (never store plaintext)
   codeHash: { type: String, required: true, unique: true },
-  status: { type: String, enum: ['available', 'reserved', 'sold', 'revoked'], default: 'available', index: true },
-  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', default: null },
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  status: { type: String, enum: ['sold', 'revoked'], default: 'sold', index: true },
+  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', default: null, index: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   soldAt: { type: Date, default: null },
 }, { timestamps: true });
 
 keySchema.index({ game: 1, status: 1 });
+keySchema.index({ user: 1, createdAt: -1 });
 
-// Atomically claim ONE available key for a game.
-// Returns the claimed doc or null when out of stock. Race-safe.
-keySchema.statics.claimOne = function (gameId, { orderId = null, userId = null } = {}) {
-  return this.findOneAndUpdate(
-    { game: gameId, status: 'available' },
-    { $set: { status: 'sold', order: orderId, user: userId, soldAt: new Date() } },
-    { new: true }
-  );
+/* Record one issued key. Throws on a duplicate codeHash, which is the point:
+   two orders can never end up holding the same key. */
+keySchema.statics.issue = function (gameId, plain, { orderId = null, userId = null, source = 'demo' } = {}) {
+  return this.create({
+    game: gameId,
+    source,
+    codeEnc: encryptKey(plain),
+    codeHash: hashKey(plain),
+    status: 'sold',
+    order: orderId,
+    user: userId,
+    soldAt: new Date(),
+  });
 };
 
-keySchema.statics.countAvailable = function (gameId) {
-  return this.countDocuments({ game: gameId, status: 'available' });
+/* Keys this buyer already holds, newest first. Drives the library page. */
+keySchema.statics.listForUser = function (userId) {
+  return this.find({ user: userId, status: 'sold' }).sort({ createdAt: -1 });
 };
 
 module.exports = mongoose.model('GameKey', keySchema);

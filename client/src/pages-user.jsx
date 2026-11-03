@@ -141,13 +141,16 @@ function DevReplies({ games, onDone }) {
   const toast = useToast();
   const [open, setOpen] = useState(null);
   const [list, setList] = useState([]);
-  const loadFor = async (gid) => {
-    try { const r = await api('/games/' + gid); setList(r.reviews || []); }
+  const loadFor = async (slug) => {
+    try { const r = await api('/games/' + slug); setList(r.reviews || []); }
     catch { setList([]); }
   };
-  const openFor = (gid) => {
-    setOpen(open === gid ? null : gid);
-    if (open !== gid) loadFor(gid);
+  const openFor = (g) => {
+    const opening = open !== g._id;
+    setOpen(opening ? g._id : null);
+    /* /games/:slug takes a slug, not an ObjectId; passing the id returned 404
+       and left the reply list loading forever. */
+    if (opening) loadFor(g.slug);
   };
   const send = async (e, rid) => {
     e.preventDefault();
@@ -156,7 +159,8 @@ function DevReplies({ games, onDone }) {
       await api(`/reviews/${rid}/respond`, { method: 'POST', body: { text: f.get('text') } });
       e.target.reset();
       toast('Reply published');
-      loadFor(open);
+      const current = games.find((g) => String(g._id) === String(open));
+      if (current) loadFor(current.slug);
       onDone && onDone();
     } catch (er) { toast(er.message, 'err'); }
   };
@@ -170,7 +174,7 @@ function DevReplies({ games, onDone }) {
           <p style={{ margin: '0 0 6px' }}>
             <Link to={`/games/${g.slug}`}>{g.title}</Link>
             <span className="tiny"> · {g.stats.reviewCount} reviews · {g.stats.reviewCount ? (g.stats.reviewSum / g.stats.reviewCount).toFixed(1) : '0'}/5</span>
-            <button className="ghost-btn sm" onClick={() => openFor(g._id)}>
+            <button className="ghost-btn sm" onClick={() => openFor(g)}>
               {open === g._id ? 'Close' : 'Reply'}
             </button>
           </p>
@@ -216,7 +220,8 @@ export function Dev() {
   };
   if (!d) return <p className="muted">Loading…</p>;
   if (d.err) return <p className="muted">Developer account required. <Link to="/dev/apply">Become a developer</Link></p>;
-  const lowKeys = d.games.filter((g) => g.price > 0 && (g.stats.keysAvailable || 0) === 0);
+  // Only physical stock can run low. Digital keys are issued on payment, so
+  // there is no level to warn about.
   const lowBox = d.games.filter((g) => g.physical?.enabled && (g.physical?.stock || 0) < 5);
   const canPayout = d.balance >= 10;
   return (<>
@@ -229,7 +234,7 @@ export function Dev() {
     </div>
     <div className="alert-bar">
       {d.balance < 10 && <div className="alert-info">Payout unlocks at <b>$10.00</b> — balance is <b>${d.balance.toFixed(2)}</b>.</div>}
-      {!!lowKeys.length && <div className="alert-warn"><b>{lowKeys.length} title{lowKeys.length > 1 ? 's' : ''} out of keys.</b> Players cannot buy until you restock. <Link to={`/dev/keys/${lowKeys[0]._id}`}>Restock now</Link></div>}
+      {!!lowBox.length && <div className="alert-warn"><b>{lowBox.length} title{lowBox.length > 1 ? 's' : ''} low on physical stock.</b> Physical editions cannot ship until you restock. <Link to="/dev/toys">Restock</Link></div>}
       {!!lowBox.length && <div className="alert-warn"><b>{lowBox.length} box edition{lowBox.length > 1 ? 's' : ''} low on stock</b> — under 5 units left.</div>}
     </div>
     <div className="kpi-row">
@@ -283,8 +288,8 @@ export function Dev() {
                   )}
                 </td>
                 <td className="num">${Number(g.price || 0).toFixed(2)}</td>
-                <td className="num" style={(g.price > 0 && !g.stats.keysAvailable) ? { color: 'var(--ember)' } : undefined}>
-                  {(g.price || 0) > 0 ? g.stats.keysAvailable || 0 : '—'}
+                <td className="num">
+                  {g.stats && g.stats.keysSold != null ? g.stats.keysSold : '—'}
                 </td>
                 <td className="num">{g.physical?.enabled ? g.physical.stock : '—'}</td>
                 <td className="num">${Number((g.stats && g.stats.revenueGross) || 0).toFixed(2)}</td>
@@ -331,50 +336,30 @@ export function DevKeys() {
   useEffect(() => {
     if (id) api('/dev/' + id + '/keys/list?limit=8').then((r) => setRows(r.keys || [])).catch(() => {});
   }, [id, d]);
-  const imp = async (e) => {
-    e.preventDefault();
-    const f = new FormData(e.target);
-    try { const r = await api(`/dev/${id}/keys/import`, { method: 'POST', body: { keys: f.get('keys'), batchId: f.get('batchId'), platform: 'Steam' } }); toast(`Imported ${r.added}`); e.target.reset(); load(); }
-    catch (er) { toast(er.message, 'err'); }
-  };
   const revoke = async (gid) => {
     try { await api(`/dev/${id}/keys/${gid}/revoke`, { method: 'POST' }); toast('Key revoked'); load(); }
     catch (er) { toast(er.message, 'err'); }
   };
-  const gen = async () => {
-    try { const r = await api(`/dev/${id}/keys/generate`, { method: 'POST', body: { count: 20 } }); toast(`Generated ${r.added} keys`); load(); }
-    catch (er) { toast(er.message, 'err'); }
-  };
   if (!d) return <p className="muted">{msg || 'Loading…'}</p>;
-  const outOf = d.available === 0;
   return (<>
-    <h1>Key vault — {d.game.title}</h1>
-    {outOf && <div className="alert-bar"><div className="alert-warn"><b>Out of keys.</b> Nobody can buy the digital edition until you restock.</div></div>}
+    <h1>Issued keys — {d.game.title}</h1>
+    <div className="alert-bar"><div className={d.supplier ? 'alert-warn' : ''}><b>Keys are not stocked.</b> {' '}
+      {d.supplier
+        ? 'Each paid order fetches a key from your publisher endpoint.'
+        : 'No publisher endpoint is configured, so each paid order issues a DEMO placeholder.'}
+      {' '}This page shows what has already been issued, and lets you revoke one that leaks.
+    </div></div>
     <div className="kpi-row">
-      <div className="kpi"><span>Available</span><b>{d.available}</b></div>
-      <div className="kpi"><span>Sold</span><b>{d.sold}</b></div>
+      <div className="kpi"><span>Issued</span><b>{d.sold}</b></div>
       <div className="kpi"><span>Revoked</span><b>{d.revoked}</b></div>
+      <div className="kpi"><span>Source</span><b>{d.supplier ? 'Publisher' : 'DEMO'}</b></div>
     </div>
-    <div className="two-col">
-      <div className="panel"><h3>Bulk import</h3>
-        <form onSubmit={imp} style={{ display: 'grid', gap: 8 }}>
-          <input name="batchId" placeholder="batch id (e.g. batch-2026-10)" />
-          <textarea name="keys" placeholder="One key per line, or comma separated" style={{ minHeight: 140 }} />
-          <button className="cta-btn sm">Import keys</button>
-        </form>
-        <p className="tiny">Keys are stored AES-256-GCM encrypted; duplicate keys are skipped automatically.</p>
-      </div>
-      <div className="panel"><h3>Generate demo keys</h3>
-        <p className="tiny">Creates fake <code>DEMO-XXXXX-XXXXX-XXXXX</code> placeholders for testing. Not real Steam keys.</p>
-        <button className="ghost-btn" onClick={gen}>Generate 20</button>
-      </div>
-    </div>
-    {!!rows.length && <div className="panel"><h3>Recent keys (masked)</h3>
+    {!!rows.length && <div className="panel"><h3>Recently issued (masked)</h3>
       <table className="tbl"><tbody>
-        <tr><th>Key</th><th>Status</th><th>Batch</th><th>Platform</th><th></th></tr>
+        <tr><th>Key</th><th>Status</th><th>Source</th><th>Platform</th><th></th></tr>
         {rows.map((k) => <tr key={k._id}>
-          <td className="tiny"><code>{k.mask}</code></td><td>{k.status}</td><td className="tiny">{k.batchId}</td><td className="tiny">{k.platform}</td>
-          {k.status === 'available' && <td><button className="ghost-btn sm" onClick={() => revoke(k._id)}>Revoke</button></td>}
+          <td className="tiny"><code>{k.mask}</code></td><td>{k.status}</td><td className="tiny">{k.source}</td><td className="tiny">{k.platform}</td>
+          {k.status === 'sold' && <td><button className="ghost-btn sm" onClick={() => revoke(k._id)}>Revoke</button></td>}
         </tr>)}
       </tbody></table></div>}
   </>);
@@ -651,6 +636,126 @@ export function ModDetail() {
       {!mirrored && m.downloadUrl && <p><a href={m.downloadUrl}>Download</a></p>}
       {(m.tags || []).length > 0 && <p className="row" style={{ marginBottom: 0 }}>{m.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</p>}
     </div>
+  </>);
+}
+
+export function Admin() {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
+  const [tab, setTab] = useState('orders');
+  const toast = useToast();
+  const load = () => api('/admin').then((r) => { setD(r); setErr(''); }).catch((e) => { setErr(e.message); setD({ orders: [], posts: [], mods: [], reviews: [] }); });
+  useEffect(() => { load(); }, []);
+  if (!d) return <p className="muted">Loading…</p>;
+  const advance = async (o) => {
+    try { const r = await api('/admin/orders/' + o._id + '/advance', { method: 'POST' }); toast('Shipment ' + r.shipment.status); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const delPost = async (p) => {
+    if (!window.confirm('Delete post "' + p.title + '"?')) return;
+    try { await api('/admin/posts/' + p._id, { method: 'DELETE' }); toast('Post deleted'); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const toggleMod = async (m) => {
+    try { const r = await api('/admin/mods/' + m._id + '/visibility', { method: 'POST', body: { hidden: m.status !== 'hidden' } }); toast('Mod ' + r.status); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const delReview = async (r) => {
+    if (!window.confirm('Delete review "' + r.title + '"?')) return;
+    try { await api('/admin/reviews/' + r._id, { method: 'DELETE' }); toast('Review deleted'); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  if (err) return <p className="err">{err}</p>;
+  const paid = d.orders.filter((o) => ['paid', 'shipped', 'delivered'].includes(o.status));
+  const revenue = paid.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+  const toShip = d.orders.filter((o) => o.shipment && ['packing', 'shipped'].includes(o.shipment.status)).length;
+  const tabs = [['orders', 'Orders (' + d.orders.length + ')'], ['posts', 'Posts (' + d.posts.length + ')'], ['mods', 'Mods (' + d.mods.length + ')'], ['reviews', 'Reviews (' + d.reviews.length + ')']];
+  return (<>
+    <div className="sec-head" style={{ marginTop: 0 }}>
+      <span className="ix">Admin</span>
+      <h1>Store desk</h1>
+      <span className="tiny" style={{ marginLeft: 'auto' }}>orders, shipments and content</span>
+    </div>
+    <div className="kpi-row">
+      <div className="kpi"><span>Orders</span><b>{d.orders.length}</b></div>
+      <div className="kpi"><span>Paid revenue</span><b>${revenue.toFixed(2)}</b></div>
+      <div className="kpi"><span>To ship</span><b>{toShip}</b></div>
+      <div className="kpi"><span>Posts</span><b>{d.posts.length}</b></div>
+    </div>
+    <div className="chips">
+      {tabs.map(([k, label]) => <button key={k} className={'chip' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{label}</button>)}
+    </div>
+
+    {tab === 'orders' && (d.orders.length ? (
+      <table className="ptable">
+        <thead><tr><th>Order</th><th>Buyer</th><th>Placed</th><th>Units</th><th>Status</th><th>Shipment</th><th>Total</th><th /></tr></thead>
+        <tbody>
+          {d.orders.map((o) => {
+            const st = o.shipment?.status;
+            const label = st === 'packing' ? 'Mark shipped' : st === 'shipped' ? 'Mark delivered' : null;
+            return (
+              <tr key={o._id}>
+                <td><Link className="t-name" to={'/orders/' + o._id}>#{String(o._id).slice(-6).toUpperCase()}</Link></td>
+                <td className="t-genre">@{o.user?.username || '?'}</td>
+                <td className="t-genre">{new Date(o.createdAt).toLocaleDateString()}</td>
+                <td className="t-genre">{(o.items || []).reduce((s, i) => s + i.qty, 0)}</td>
+                <td className="t-keys">{o.status}</td>
+                <td className="t-genre">{st || 'digital'}</td>
+                <td className="t-now">${Number(o.grandTotal || 0).toFixed(2)}</td>
+                <td>{label ? <button className="ghost-btn sm" onClick={() => advance(o)}>{label}</button> : null}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    ) : <div className="empty"><h3>No orders yet</h3><p>Paid orders appear here for fulfilment.</p></div>)}
+
+    {tab === 'posts' && (d.posts.length ? (
+      <table className="ptable">
+        <thead><tr><th>Post</th><th>Author</th><th>Board</th><th>Replies</th><th>Placed</th><th /></tr></thead>
+        <tbody>{d.posts.map((p) => (
+          <tr key={p._id}>
+            <td><Link className="t-name" to={'/community/p/' + p._id}>{p.title}</Link></td>
+            <td className="t-genre">@{p.author?.username || '?'}</td>
+            <td className="t-genre">{p.board}</td>
+            <td className="t-genre">{(p.replies || []).length}</td>
+            <td className="t-genre">{new Date(p.createdAt).toLocaleDateString()}</td>
+            <td><button className="ghost-btn sm" onClick={() => delPost(p)}>Delete</button></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    ) : <p className="muted">No community posts.</p>)}
+
+    {tab === 'mods' && (d.mods.length ? (
+      <table className="ptable">
+        <thead><tr><th>Mod</th><th>Game</th><th>Author</th><th>Status</th><th /></tr></thead>
+        <tbody>{d.mods.map((m) => (
+          <tr key={m._id}>
+            <td><Link className="t-name" to={'/mods/' + m._id}>{m.title}</Link></td>
+            <td className="t-genre">{m.game?.title || '?'}</td>
+            <td className="t-genre">{m.author?.username ? '@' + m.author.username : (m.source?.author || 'Steam Workshop')}</td>
+            <td className="t-keys">{m.status}</td>
+            <td><button className="ghost-btn sm" onClick={() => toggleMod(m)}>{m.status === 'hidden' ? 'Unhide' : 'Hide'}</button></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    ) : <p className="muted">No mods.</p>)}
+
+    {tab === 'reviews' && (d.reviews.length ? (
+      <table className="ptable">
+        <thead><tr><th>Review</th><th>Game</th><th>Author</th><th>Stars</th><th>Placed</th><th /></tr></thead>
+        <tbody>{d.reviews.map((r) => (
+          <tr key={r._id}>
+            <td className="t-name">{r.title}</td>
+            <td className="t-genre">{r.game?.title || '?'}</td>
+            <td className="t-genre">@{r.user?.username || '?'}</td>
+            <td className="t-genre">{r.stars}/5</td>
+            <td className="t-genre">{new Date(r.createdAt).toLocaleDateString()}</td>
+            <td><button className="ghost-btn sm" onClick={() => delReview(r)}>Delete</button></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    ) : <p className="muted">No reviews.</p>)}
   </>);
 }
 

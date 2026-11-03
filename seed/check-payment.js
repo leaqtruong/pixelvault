@@ -65,6 +65,25 @@ async function call(method, path, body) {
   return { status: res.status, data, location: res.headers.get('location') };
 }
 
+/* The catalogue mirrors Steam, so a price that moved since the import is a
+ * legitimate 409: the server has already rewritten the row and the cart, and
+ * the shopper's retry is the same request. */
+async function placeOrder(body) {
+  const first = await call('POST', '/api/checkout/place', body);
+  if (first.status === 409 && first.data && first.data.code === 'price_changed') {
+    return call('POST', '/api/checkout/place', body);
+  }
+  return first;
+}
+
+/* Buying the same download twice is refused, so every scenario needs a title
+ * the buyer does not already hold. */
+async function unownedGame(db, userId) {
+  const buyer = await db.collection('users').findOne({ _id: userId }, { projection: { library: 1 } });
+  const owned = (buyer && buyer.library ? buyer.library : []).map((e) => e.game);
+  return db.collection('games').findOne({ price: { $gt: 0 }, _id: { $nin: owned } });
+}
+
 /* A crash here must not leave the process alive: mongoose keeps its socket
  * open, node never exits, and the shell waits forever. Every exit path closes
  * the connection and exits explicitly. The watchdog is the backstop. */
@@ -99,8 +118,9 @@ process.on('unhandledRejection', (e) => {
   // clean slate so repeated runs are comparable
   await db.collection('orders').deleteMany({});
   await db.collection('payments').deleteMany({});
-  await db.collection('gamekeys').updateMany({ status: 'sold' },
-    { $set: { status: 'available', order: null, user: null, soldAt: null } });
+  // keys issued by earlier runs are test residue — this database is the
+  // demo catalogue, not a real order book, so clearing them keeps runs equal
+  await db.collection('gamekeys').deleteMany({});
 
   // sign in
   // the login endpoint takes an email, not a username
@@ -108,18 +128,20 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
   ok('signed in', login.status === 200 && !!login.data.user,
     'HTTP ' + login.status + ' as ' + (login.data.user ? login.data.user.username : JSON.stringify(login.data)));
 
-  const keysBefore = await db.collection('gamekeys').countDocuments({ status: 'available' });
+  /* Keys are no longer stocked, so the baseline is how many have been issued.
+     Nothing about it is reset: issued keys are a record of what buyers hold. */
+  const keysBefore = await db.collection('gamekeys').countDocuments({ status: 'sold' });
 
-  // pick a paid game that has stock
-  const game = await db.collection('games').findOne({ price: { $gt: 0 }, 'stats.keysAvailable': { $gt: 2 } });
-  ok('found a paid game with key stock', !!game, game && `${game.title} $${game.price}`);
+  // any priced digital game qualifies — the key is fetched at fulfilment
+  const game = await unownedGame(db, user._id);
+  ok('found a paid game', !!game, game && `${game.title} $${game.price}`);
 
   // ---- 1. cart + checkout returns a gateway URL, and nothing is delivered yet
   await call('POST', '/api/cart/add', { gameId: game._id, qty: 1 });
   const sum = await call('GET', '/api/checkout/summary?method=standard');
   ok('checkout summary computed', sum.status === 200, `total $${sum.data.grand}`);
 
-  const placed = await call('POST', '/api/checkout/place', { method: 'standard', country: 'US' });
+  const placed = await placeOrder({ method: 'standard', country: 'US' });
   ok('checkout returned a payment URL', placed.status === 200 && !!placed.data.paymentUrl,
     placed.data.paymentUrl ? placed.data.paymentUrl.slice(0, 62) + '…' : JSON.stringify(placed.data));
 
@@ -128,8 +150,8 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
   ok('order created as pending', orderAfterPlace.status === 'pending', orderAfterPlace.status);
   ok('NO key was reserved before payment', orderAfterPlace.items.every((i) => (i.keyIds || []).length === 0),
     'keyIds all empty — abandoning the basket costs nothing');
-  const keysAfterPlace = await db.collection('gamekeys').countDocuments({ status: 'available' });
-  ok('key inventory untouched at checkout', keysAfterPlace === keysBefore, `${keysAfterPlace} available`);
+  const keysAfterPlace = await db.collection('gamekeys').countDocuments({ status: 'sold' });
+  ok('no key issued before payment', keysAfterPlace === keysBefore, `${keysAfterPlace} issued`);
 
   const pay = await db.collection('payments').findOne({ order: new mongoose.Types.ObjectId(orderId) });
   ok('payment row created as pending', pay && pay.status === 'pending');
@@ -174,8 +196,8 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
   ok('order is now paid', order.status === 'paid', order.status);
   ok('exactly one key was claimed', order.items[0].keyIds.length === 1, JSON.stringify(order.items[0].keyIds.map(String)));
 
-  const keysAfter = await db.collection('gamekeys').countDocuments({ status: 'available' });
-  ok('key inventory dropped by exactly one', keysAfter === keysBefore - 1, `${keysBefore} -> ${keysAfter}`);
+  const keysAfter = await db.collection('gamekeys').countDocuments({ status: 'sold' });
+  ok('issued exactly one new key', keysAfter === keysBefore + 1, `${keysBefore} -> ${keysAfter}`);
 
   const soldKey = await db.collection('gamekeys').findOne({ _id: order.items[0].keyIds[0] });
   ok('claimed key is linked to the order', String(soldKey.order) === String(orderId));
@@ -199,8 +221,8 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
   // ---- 6. replay the same callback: must be a no-op
   const replay = await call('GET', backTo.replace(B, '').replace('/payment/return', '/api/payment/return'));
   ok('replayed callback is idempotent', replay.data.already === true, JSON.stringify(replay.data).slice(0, 80));
-  const keysAfterReplay = await db.collection('gamekeys').countDocuments({ status: 'available' });
-  ok('replay claimed no extra key', keysAfterReplay === keysAfter, `${keysAfter} -> ${keysAfterReplay}`);
+  const keysAfterReplay = await db.collection('gamekeys').countDocuments({ status: 'sold' });
+  ok('replay issued no extra key', keysAfterReplay === keysAfter, `${keysAfter} -> ${keysAfterReplay}`);
 
   const orderAfterReplay = await db.collection('orders').findOne({ _id: new mongoose.Types.ObjectId(orderId) });
   ok('order still has exactly one key', orderAfterReplay.items[0].keyIds.length === 1);
@@ -212,9 +234,9 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
   ok('IPN rejects a forged signature', ipn.data && ipn.data.RspCode === '97', 'RspCode=' + ipn.data?.RspCode);
 
   // ---- 8. cancelling at the gateway leaves nothing behind
-  const game2 = await db.collection('games').findOne({ price: { $gt: 0 }, 'stats.keysAvailable': { $gt: 2 } });
+  const game2 = await unownedGame(db, user._id);
   await call('POST', '/api/cart/add', { gameId: game2._id, qty: 1 });
-  const place2 = await call('POST', '/api/checkout/place', { method: 'standard', country: 'US' });
+  const place2 = await placeOrder({ method: 'standard', country: 'US' });
   const u2 = new URL(place2.data.paymentUrl);
   u2.pathname = '/sandbox-gateway/result';
   const back2 = (await fetch(u2.toString(), {
@@ -227,8 +249,8 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
   const order2 = await db.collection('orders').findOne({ _id: new mongoose.Types.ObjectId(place2.data.orderId) });
   ok('cancelled order is cancelled', order2.status === 'cancelled', order2.status);
   ok('cancelled order claimed no key', order2.items.every((i) => (i.keyIds || []).length === 0));
-  const keysAfterFail = await db.collection('gamekeys').countDocuments({ status: 'available' });
-  ok('failed payment consumed no stock', keysAfterFail === keysAfter, `${keysAfter} -> ${keysAfterFail}`);
+  const keysAfterFail = await db.collection('gamekeys').countDocuments({ status: 'sold' });
+  ok('failed payment issued no key', keysAfterFail === keysAfter, `${keysAfter} -> ${keysAfterFail}`);
   const cartAfterFail = await call('GET', '/api/cart');
   ok('cart kept after a declined payment', (cartAfterFail.data.items || []).length === 1,
     (cartAfterFail.data.items || []).length + ' item(s) still there so it can be retried');
@@ -244,9 +266,9 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
   const empty = await call('GET', '/api/cart');
   ok('basket emptied before the race test', (empty.data.items || []).length === 0);
 
-  const game3 = await db.collection('games').findOne({ price: { $gt: 0 }, 'stats.keysAvailable': { $gt: 2 } });
+  const game3 = await unownedGame(db, user._id);
   await call('POST', '/api/cart/add', { gameId: game3._id, qty: 1 });
-  const place3 = await call('POST', '/api/checkout/place', { method: 'standard', country: 'US' });
+  const place3 = await placeOrder({ method: 'standard', country: 'US' });
   const u3 = new URL(place3.data.paymentUrl);
   u3.pathname = '/sandbox-gateway/result';
   const loc3 = (await fetch(u3.toString(), {
@@ -255,13 +277,13 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
     body: 'act=ok', redirect: 'manual',
   })).headers.get('location');
   const path3 = loc3.replace(B, '').replace('/payment/return', '/api/payment/return');
-  const before3 = await db.collection('gamekeys').countDocuments({ status: 'available' });
+  const before3 = await db.collection('gamekeys').countDocuments({ status: 'sold' });
   const both = await Promise.all([call('GET', path3), call('GET', path3), call('GET', path3)]);
   const wins = both.filter((r) => r.data.ok && !r.data.already).length;
   const losers = both.filter((r) => r.data.already).length;
-  const after3 = await db.collection('gamekeys').countDocuments({ status: 'available' });
+  const after3 = await db.collection('gamekeys').countDocuments({ status: 'sold' });
   ok('three parallel callbacks, exactly one settled', wins === 1, `${wins} winner, ${losers} told it was already settled`);
-  ok('parallel callbacks consumed exactly one key', before3 - after3 === 1, `${before3} -> ${after3}`);
+  ok('parallel callbacks issued exactly one key', after3 - before3 === 1, `${before3} -> ${after3}`);
   const order3 = await db.collection('orders').findOne({ _id: new mongoose.Types.ObjectId(place3.data.orderId) });
   const keysInOrder3 = order3.items.reduce((s, i) => s + (i.keyIds || []).length, 0);
   ok('race order recorded exactly one key', keysInOrder3 === 1, keysInOrder3 + ' keyIds');
@@ -276,21 +298,11 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
   if (process.argv.includes('--clean')) {
     await db.collection('orders').deleteMany({});
     await db.collection('payments').deleteMany({});
-    await db.collection('gamekeys').updateMany({ status: 'sold' },
-      { $set: { status: 'available', order: null, user: null, soldAt: null } });
-    // Handing keys back by writing to the database bypasses the application, so
-    // the stats counter it decremented during the run is never restored. Recompute
-    // it from the inventory, otherwise --clean leaves the store badges showing a
-    // stock level that no longer matches the key rows.
-    const perGame = await db.collection('gamekeys').aggregate([
-      { $match: { status: 'available' } },
-      { $group: { _id: '$game', n: { $sum: 1 } } },
-    ]).toArray();
-    const realStock = new Map(perGame.map((r) => [String(r._id), r.n]));
-    for (const g of await db.collection('games').find({}).toArray()) {
-      await db.collection('games').updateOne({ _id: g._id },
-        { $set: { 'stats.keysAvailable': realStock.get(String(g._id)) || 0 } });
-    }
+    await db.collection('gamekeys').deleteMany({});
+    // stats.keysAvailable no longer exists — the counter described a shelf that
+    // is gone. Drop it from documents that still carry it, or the schema and the
+    // stored data disagree about what a game has.
+    await db.collection('games').updateMany({}, { $unset: { 'stats.keysAvailable': '' } });
     // Zero the counter rather than unsetting it: the Dev console reads
     // stats.revenueGross, and $unset left the field missing on every document,
     // which made that page throw and blank out.
@@ -303,7 +315,7 @@ const login = await call('POST', '/api/auth/login', { email: user.email, passwor
     }
     await db.collection('games').updateMany({},
       { $set: { 'stats.unitsDigital': 0, 'stats.unitsPhysical': 0, 'stats.keysSold': 0 } });
-    console.log('  test data cleared: orders, payments, key stock, libraries, developer balances');
+    console.log('  test data cleared: orders, payments, issued keys, libraries, developer balances');
   }
 
   console.log('\n' + (bad ? bad + ' FAILURES' : 'payment runs end to end, and survives tampering, replay and races'));

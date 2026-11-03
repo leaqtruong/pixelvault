@@ -26,7 +26,7 @@ const userSchema = new mongoose.Schema({
   displayName: { type: String, default: '', trim: true, maxlength: 40 },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   phone: { type: String, default: '', trim: true, maxlength: 20 },
-  passwordHash: { type: String, required: true },
+  passwordHash: { type: String, required: true, select: false },
   role: { type: String, enum: ['user', 'developer', 'admin'], default: 'user' },
   avatar: { type: String, default: '' },
   bio: { type: String, default: '', maxlength: 500 },

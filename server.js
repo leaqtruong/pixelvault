@@ -8,7 +8,6 @@ const connectDB = require('./config/db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const IS_PROD = process.env.NODE_ENV === 'production';
 
 /* Behind a proxy that terminates TLS — Render, or anything else fronting this
    with nginx — Express sees plain http unless told to trust the forwarded
@@ -26,9 +25,11 @@ const sessionOptions = {
   saveUninitialized: false,
   cookie: {
     maxAge: 1000 * 60 * 60 * 24 * 7,
-    // only over https, and only in production, so plain-http local use still
-    // gets a working cookie
-    secure: IS_PROD,
+    // Secure only when the request is actually https (or a trusted proxy says
+    // so). A plain boolean tied to NODE_ENV silently drops the cookie on any
+    // plain-http run where NODE_ENV=production is set, signing everyone out of
+    // every /api route.
+    secure: 'auto',
     sameSite: 'lax',
   },
 };
@@ -48,7 +49,12 @@ app.use('/api', require('./routes/api').router);
 
 // Stand-in gateway. Mounted at the root because a real gateway is a different
 // origin — keeping it off /api makes the redirect cross-app in the same shape.
-app.use('/', require('./routes/sandboxGateway'));
+// It is mounted only when no merchant account is configured: a simulator that
+// shares this process while VNP_* is live would be a signing oracle for real
+// callbacks, and the two secrets are deliberately different.
+if (!require('./lib/paymentGateway').isConfigured()) {
+  app.use('/', require('./routes/sandboxGateway'));
+}
 
 // React SPA (built with `npm run build --prefix client`)
 const dist = path.join(__dirname, 'client', 'dist');
