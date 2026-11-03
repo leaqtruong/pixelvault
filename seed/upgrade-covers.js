@@ -12,16 +12,16 @@ const CDN = 'https://cdn.cloudflare.steamstatic.com/steam/apps';
 const STORE = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps';
 const APPLY = process.argv.includes('--apply');
 
-/* Largest-first. header.jpg is only 460x215, which is what made the cards
-   look soft on a hi-dpi screen. Steam's tallest capsule is 600x900. */
-const PORTRAIT_CHAIN = [
-  (id) => `${CDN}/${id}/library_600x900_2x.jpg`,   // 600x900
-  (id) => `${CDN}/${id}/library_600x900.jpg`,      // 300x450
-  (id) => `${CDN}/${id}/capsule_616x353.jpg`,      // 616x353
-  (id) => `${STORE}/${id}/library_600x900_2x.jpg`,
+/* Landscape-first. The store renders every cover in a 16:9 frame, so a
+   portrait 600x900 capsule gets centre-cropped and looks cut off. Prefer the
+   616x353 landscape capsule, then the header, then the hero. */
+const COVER_CHAIN = [
+  (id) => `${CDN}/${id}/capsule_616x353.jpg`,      // 616x353 landscape capsule
+  (id) => `${CDN}/${id}/header.jpg`,               // 460x215 landscape header
   (id) => `${STORE}/${id}/capsule_616x353.jpg`,
-  // last resort: a 1920-wide banner still beats a 460px one once cropped
+  (id) => `${CDN}/${id}/library_hero.jpg`,         // 1920x620 landscape hero
   (id) => `${STORE}/${id}/library_hero.jpg`,
+  (id) => `${CDN}/${id}/library_600x900_2x.jpg`,   // 600x900 portrait, last resort
 ];
 const HERO_CHAIN = [
   (id) => `${CDN}/${id}/library_hero.jpg`,         // 1920x620
@@ -38,6 +38,21 @@ async function firstHit(chain, id) {
   return null;
 }
 
+/* Newer apps publish their capsules under content-hashed store_item_assets
+   paths that cannot be constructed from an appid alone. The Store API's
+   header_image is the correct landscape URL for those. */
+async function headerImage(id) {
+  try {
+    const r = await fetch(`https://store.steampowered.com/api/appdetails?appids=${id}&cc=US&l=en`, {
+      headers: { 'User-Agent': 'PixelVault-Coursework-Demo/1.0' },
+    });
+    const j = await r.json();
+    const e = j[String(id)];
+    if (e && e.success && e.data.header_image) return e.data.header_image;
+  } catch {}
+  return null;
+}
+
 (async () => {
   await mongoose.connect(process.env.MONGO_URI);
   const db = mongoose.connection.db;
@@ -48,8 +63,10 @@ async function firstHit(chain, id) {
 
   for (const g of games) {
     const id = g.steamAppId;
-    const hiCover = await firstHit(PORTRAIT_CHAIN, id);
+    let hiCover = await firstHit(COVER_CHAIN, id);
     const hero = await firstHit(HERO_CHAIN, id);
+
+    if (!hiCover) hiCover = await headerImage(id);
 
     const nextCover = hiCover || g.coverImage;
     if (hiCover) coverUp++; else { kept++; keptTitles.push(`${g.title} (${id})`); }

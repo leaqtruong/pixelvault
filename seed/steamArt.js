@@ -7,13 +7,18 @@
 const CDN = 'https://cdn.cloudflare.steamstatic.com/steam/apps';
 const STORE = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps';
 
-const PORTRAIT = [
-  (id) => `${CDN}/${id}/library_600x900_2x.jpg`,    // 600x900, tallest capsule Steam has
-  (id) => `${CDN}/${id}/library_600x900.jpg`,
-  (id) => `${CDN}/${id}/capsule_616x353.jpg`,        // 616x353
-  (id) => `${STORE}/${id}/library_600x900_2x.jpg`,
+/* The card grid, tables and detail rail all force a 16:9 landscape frame, so
+   the cover must be landscape. Steam's portrait 600x900 library capsule looked
+   fine on its own but got centre-cropped into the 16:9 box, cutting off titles
+   and faces. Prefer the 616x353 landscape capsule, then the 460x215 header,
+   then the wide hero; portrait is only a last resort. */
+const COVER = [
+  (id) => `${CDN}/${id}/capsule_616x353.jpg`,        // 616x353 landscape capsule
+  (id) => `${CDN}/${id}/header.jpg`,                 // 460x215 landscape header
   (id) => `${STORE}/${id}/capsule_616x353.jpg`,
-  (id) => `${STORE}/${id}/library_hero.jpg`,         // 1920x620, still better than a 460px banner
+  (id) => `${CDN}/${id}/library_hero.jpg`,           // 1920x620 landscape hero
+  (id) => `${STORE}/${id}/library_hero.jpg`,
+  (id) => `${CDN}/${id}/library_600x900_2x.jpg`,     // 600x900 portrait, last resort
 ];
 const HERO = [
   (id) => `${CDN}/${id}/library_hero.jpg`,
@@ -37,7 +42,7 @@ async function firstHit(chain, id) {
 async function resolveArt(appid, fallback) {
   if (!appid) return { cover: fallback, hero: null };
   const [cover, hero] = await Promise.all([
-    firstHit(PORTRAIT, appid),
+    firstHit(COVER, appid),
     firstHit(HERO, appid),
   ]);
   return { cover: cover || fallback, hero };
