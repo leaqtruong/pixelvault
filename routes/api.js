@@ -185,7 +185,15 @@ router.get('/games', async (req, res) => {
     const scope = { status: 'published', productType: { $ne: 'toy' } };
     const [genres, tags, categories, languages] = await Promise.all([
       Game.distinct('genres', scope),
-      Game.distinct('tags', scope),
+      // Most-used tags first, so the store's tag browser shows the popular
+      // ones instead of an alphabetical wall of every tag in the catalogue.
+      Game.aggregate([
+        { $match: scope },
+        { $unwind: '$tags' },
+        { $group: { _id: '$tags', n: { $sum: 1 } } },
+        { $sort: { n: -1, _id: 1 } },
+        { $limit: 30 },
+      ]).then((rows) => rows.map((r) => r._id)),
       Game.distinct('categories', scope),
       Game.distinct('platforms', scope),
     ]);
@@ -842,6 +850,19 @@ router.get('/orders/:id', needLogin, async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (String(order.user) !== String(req.session.user._id) && req.session.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   res.json({ order, plainById: withPlainKeys(order) });
+});
+
+/* A pending order holds nothing yet, so the shopper can abandon it without
+   emailing support. Anything paid has already issued keys or drawn stock, so
+   it is deliberately refused here — that path needs a refund flow instead. */
+router.post('/orders/:id/cancel', needLogin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Order not found' });
+  const order = await Order.findOne({ _id: req.params.id, user: req.session.user._id });
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (order.status !== 'pending') return res.status(400).json({ error: `Order is ${order.status}; only pending orders can be cancelled.` });
+  order.status = 'cancelled';
+  await order.save();
+  res.json({ ok: true, status: order.status });
 });
 
 // NOTE: a POST /orders/:id/advance route used to live here to step a shipment

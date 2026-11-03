@@ -284,9 +284,18 @@ export function OrderDetail() {
   if (!d) return <p className="muted">Loading…</p>;
   if (d.err) return <p className="err">Order not found.</p>;
   const { order, plainById } = d;
+  const toast = useToast();
+  const cancel = async () => {
+    try { await api(`/orders/${id}/cancel`, { method: 'POST' }); toast('Order cancelled'); setD(await api('/orders/' + id)); }
+    catch (er) { toast(er.message, 'err'); }
+  };
   return (
     <><h1>Order #{String(order._id).slice(-6)}</h1>
-      <p className="tiny">{new Date(order.createdAt).toLocaleString()} · status: <b>{order.status}</b></p>
+      <p className="tiny">{new Date(order.createdAt).toLocaleString()} · status: <b>{order.status}</b>
+        {order.status === 'pending' && (
+          <button className="ghost-btn sm" style={{ marginLeft: 10 }} onClick={cancel}>Cancel order</button>
+        )}
+      </p>
       <div className="two-col"><div className="panel"><h3>Items</h3>
         {order.items.map((it, ix) => <div key={ix}><p>{it.qty}× {it.title} ({it.edition}) — ${(it.unitPrice * it.qty).toFixed(2)}</p>
           {(it.keyIds || []).map((k) => <p key={k._id}><code>{plainById[k._id]}</code> <span className="tiny">· Steam key</span></p>)}

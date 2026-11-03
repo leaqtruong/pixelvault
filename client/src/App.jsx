@@ -5,7 +5,7 @@ import { Layout, ToastHost } from './components.jsx';
 import { BUILD } from './version.js';
 import { Home, Store, GameDetail, Toys, ToyDetail } from './pages-shop.jsx';
 import { Cart, Checkout, Orders, OrderDetail, Library, Recommendations, PaymentReturn } from './pages-trade.jsx';
-import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevSales, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings, Admin } from './pages-user.jsx';
+import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevSales, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings, Support, Admin } from './pages-user.jsx';
 
 /* A single missing or unexpected field used to unmount the whole tree and
    leave a black page with no clue why. Catch it here and say what happened. */
@@ -124,6 +124,7 @@ export default function App() {
           <Route path="/mods" element={<Mods />} />
           <Route path="/mods/:id" element={<ModDetail />} />
           <Route path="/settings" element={<Settings me={me} onMe={setMe} theme={theme} onTheme={(t) => setTheme(t)} />} />
+          <Route path="/support" element={<Support />} />
           <Route path="*" element={<p className="muted">404 — vault corridor not found. <a href="/">Back home</a></p>} />
         </Routes>
         </ToastHost>

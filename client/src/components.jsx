@@ -249,7 +249,7 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
           <footer className="footer">
             PixelVault demo storefront — coursework project. Game data via the Steam Store API,
             merch via official brand stores. Delivered keys are DEMO placeholders.<br />
-            <span className="tiny">build {BUILD}</span><ApiStatus />
+            <span className="tiny">build {BUILD}</span><ApiStatus /> · <Link to="/support" className="tiny">Support &amp; refunds</Link>
           </footer>
         </div>
       </div>

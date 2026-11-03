@@ -230,6 +230,14 @@ export function Store() {
               ))}
             </div>
           )}
+          {(d.tags || []).length > 0 && (
+            <div className="side_box">
+              <h4>Popular tags</h4>
+              {d.tags.map((t) => (
+                <Link key={t} className={q.tag === t ? 'on' : ''} to={`/games?tag=${encodeURIComponent(t)}`}>{t}</Link>
+              ))}
+            </div>
+          )}
           {(d.categories || []).length > 0 && (
             <div className="side_box">
               <h4>Features</h4>
