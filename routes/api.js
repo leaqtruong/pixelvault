@@ -15,6 +15,7 @@ const { decryptKey } = require('../lib/keyCrypto');
 const { issueKeys, supplierConfigured } = require('../lib/keyProvider');
 const gateway = require('../lib/paymentGateway');
 const steamPrice = require('../lib/steamPrice');
+const loginLimiter = require('../lib/loginLimiter');
 
 const router = express.Router();
 
@@ -113,10 +114,24 @@ router.post('/auth/login', async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
     const { email, password } = req.body;
+    const gate = loginLimiter.check(req, email);
+    if (gate.blocked) {
+      res.set('Retry-After', String(gate.retryAfterSec));
+      return res.status(429).json({
+        error: `Too many login attempts. Try again in ${Math.max(1, Math.ceil(gate.retryAfterSec / 60))} minute(s).`,
+      });
+    }
     const user = await User.findOne({ email: String(email).toLowerCase() }).select('+passwordHash');
-    if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
+    if (!user) {
+      loginLimiter.recordFailure(req, email);
+      return res.status(401).json({ error: 'Invalid credentials.' });
+    }
     const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) return res.status(401).json({ error: 'Invalid credentials.' });
+    if (!ok) {
+      loginLimiter.recordFailure(req, email);
+      return res.status(401).json({ error: 'Invalid credentials.' });
+    }
+    loginLimiter.clear(req, email);
     req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email };
     res.json({ user: me(req) });
   } catch (e) { res.status(400).json({ error: e.message }); }
