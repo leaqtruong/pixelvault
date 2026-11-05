@@ -525,12 +525,28 @@ export function GameDetail({ me }) {
             <div className="doc">
               <h3>More like this</h3>
               <div className="related">
-                {rel.map((r) => (
-                  <Link key={r._id} to={`/games/${r.slug}`}>
-                    <b>{r.title}</b>
-                    <span className="num">${priceOf(r).toFixed(2)} · {(r.genres || []).slice(0, 1).join('')}</span>
-                  </Link>
-                ))}
+                {rel.map((r) => {
+                  const c = r.stats?.reviewCount || 0;
+                  const avg = c ? (r.stats.reviewSum / c).toFixed(1) : null;
+                  const final = priceOf(r);
+                  return (
+                    <Link key={r._id} className="rel-card" to={`/games/${r.slug}`}>
+                      <span className="rel-art">
+                        <img src={r.coverImage} alt="" loading="lazy" />
+                        <span className="rel-hover">
+                          <b>{r.title}</b>
+                          <span className="tiny">{r.tagline || (r.genres || []).slice(0, 2).join(' · ')}</span>
+                          <span className="tiny">{avg ? avg + '/5 · ' + c + ' review' + (c === 1 ? '' : 's') : 'No user reviews'}</span>
+                        </span>
+                      </span>
+                      <span className="rel-body">
+                        <b>{r.title}</b>
+                        <span className="tiny">{(r.genres || []).slice(0, 2).join(' · ')}</span>
+                        <span className="rel-price">{final <= 0 ? 'Free to play' : '$' + final.toFixed(2)}</span>
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -477,12 +477,23 @@ a.tag:hover{border-color:var(--rule-accent);color:var(--accent)}
   letter-spacing:.02em;text-transform:none;margin:0 0 var(--s2)}
 .empty p{margin:0 0 var(--s4);color:var(--dim);font-size:12.5px}
 .related{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3)}
-.related a{border:1px solid var(--rule);background:var(--card);padding:var(--s3);font-size:12px;color:var(--ink);
-  transition:border-color .14s}
-.related a:hover{border-color:var(--accent)}
-.related b{display:block;color:var(--bright);margin-bottom:3px;font-size:12.5px}
-.related a:hover b{color:var(--accent)}
-.related span{color:var(--faint)}
+.rel-card{position:relative;display:flex;flex-direction:column;border:1px solid var(--rule);
+  background:var(--card);overflow:hidden;color:var(--ink);text-decoration:none;
+  transition:border-color .14s,transform .14s}
+.rel-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.rel-art{position:relative;display:block;aspect-ratio:16/9;overflow:hidden;background:var(--card-2)}
+.rel-art img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s ease}
+.rel-card:hover .rel-art img{transform:scale(1.06)}
+.rel-hover{position:absolute;inset:0;display:grid;align-content:end;gap:5px;padding:var(--s4) var(--s3);
+  background:linear-gradient(transparent,rgba(6,6,7,.96) 45%);color:#fff;opacity:0;
+  transition:opacity .2s ease;pointer-events:none}
+.rel-card:hover .rel-hover{opacity:1}
+.rel-hover b{color:#fff;font-size:13px}
+.rel-hover .tiny{color:#cdc1ab;font-size:11.5px}
+.rel-body{display:grid;gap:3px;padding:var(--s3)}
+.rel-body b{color:var(--bright);font-size:13px;line-height:1.25}
+.rel-body .tiny{color:var(--dim);font-size:11.5px}
+.rel-price{color:var(--accent);font-weight:800;font-size:12.5px}
 .news-item{display:block;padding:9px 0;border-bottom:1px solid var(--rule-soft)}
 .news-item:last-child{border-bottom:0}
 .news-item b{color:var(--bright);font-size:12.5px;font-weight:600}
@@ -616,7 +627,7 @@ input,select,textarea{border-radius:var(--radius)}
   .ledger-item:nth-child(-n+4){border-bottom:1px solid var(--rule-soft)}
 }
 @media(max-width:620px){
-  .card-grid,.card-row{grid-template-columns:1fr}
+  .card-grid,.card-row,.related{grid-template-columns:1fr}
   .marquee a{flex:0 0 168px;height:112px}
   .shelf>*{flex:0 0 168px}
   .logo{font-size:25px}
