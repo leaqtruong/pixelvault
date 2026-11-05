@@ -568,12 +568,20 @@ input,select,textarea{border-radius:var(--radius)}
   .browse-only{display:block}
   .side-edge{display:none}
   .side-rail{position:fixed;left:0;top:0;bottom:0;width:286px;max-width:86vw;z-index:90;
-    background:var(--bg1);padding:var(--s5);overflow-y:auto;transform:translateX(-104%);
+    background:var(--bg1);padding:var(--s4);overflow-y:auto;transform:translateX(-104%);
     transition:transform .26s cubic-bezier(.22,.8,.24,1);border-right:1px solid var(--rule)}
   .shell.no-side .side-rail{width:286px;max-width:86vw}
   .shell.no-side .side-clip{width:auto;opacity:1}
   .shell.menu-open .side-rail{transform:none}
   .side-in{width:auto}
+  /* Compact the drawer so the whole rail fits a normal viewport height instead
+     of becoming a scroll box that cuts off the last section. */
+  .rail-sec{padding:var(--s3) 0}
+  .rail-sec h3{margin:0 0 var(--s2);font-size:12.5px}
+  .rail-sec p{margin:var(--s2) 0}
+  .rail-links a{font-size:12px;padding:4px 0 4px 11px}
+  .rail-cta{padding-top:var(--s2);gap:6px}
+  .rail-user{margin-bottom:var(--s2)}
   .scrim{display:block;position:fixed;inset:0;z-index:80;background:rgba(6,4,2,.6)}
   .navbar_inner>a,.navbar_inner .drop>button{padding:10px 12px}
 }

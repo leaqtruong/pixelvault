@@ -7,7 +7,7 @@ export function Cart() {
   const [d, setD] = useState(null);
   const toast = useToast();
   const load = () => api('/cart').then(setD).catch(() => setD({ items: [] }));
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
   const setQty = async (key, qty) => {
     try { await api('/cart/qty', { method: 'POST', body: { key, qty } }); load(); }
     catch (er) { toast(er.message, 'err'); }

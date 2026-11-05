@@ -63,7 +63,7 @@ export function Profile({ me }) {
   const [d, setD] = useState(null);
   const [msg, setMsg] = useState('');
   const load = () => api('/users/' + username).then(setD).catch(() => setD({ err: 1 }));
-  useEffect(load, [username]);
+  useEffect(() => { load(); }, [username]);
   if (!d) return <p className="muted">Loading…</p>;
   if (d.err) return <p className="err">User not found.</p>;
   const save = async (e) => {
@@ -205,7 +205,7 @@ export function Dev() {
   const [editing, setEditing] = useState(null);
   const toast = useToast();
   const load = () => api('/dev').then(setD).catch(() => setD({ err: 1 }));
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
   const payout = async () => {
     try { await api('/dev/payout', { method: 'POST' }); setD(await api('/dev')); toast('Payout requested — balance cleared'); }
     catch (e) { toast(e.message, 'err'); }
@@ -332,7 +332,7 @@ export function DevKeys() {
   const [rows, setRows] = useState([]);
   const toast = useToast();
   const load = () => api('/dev/' + id + '/keys').then(setD).catch((e) => setMsg(e.message));
-  useEffect(load, [id]);
+  useEffect(() => { load(); }, [id]);
   useEffect(() => {
     if (id) api('/dev/' + id + '/keys/list?limit=8').then((r) => setRows(r.keys || [])).catch(() => {});
   }, [id, d]);
