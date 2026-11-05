@@ -145,3 +145,76 @@ data class LibraryResponse(
 data class AuthResponse(
     val user: User? = null
 )
+
+data class ToyStats(
+    val views: Int = 0,
+    val unitsSold: Int = 0,
+    val revenueGross: Double = 0.0
+)
+
+data class Toy(
+    val _id: String = "",
+    val title: String = "",
+    val slug: String = "",
+    val coverImage: String = "",
+    val price: Double = 0.0,
+    val brand: String = "",
+    val category: String = "",
+    val tagline: String = "",
+    val description: String = "",
+    val stock: Int = 0,
+    val size: String = "",
+    val material: String = "",
+    val warehouse: String = "",
+    val stats: ToyStats? = null
+)
+
+data class ToysResponse(
+    val toys: List<Toy> = emptyList(),
+    val total: Int = 0,
+    val categories: List<String> = emptyList(),
+    val brands: List<String> = emptyList()
+)
+
+data class ToyDetailResponse(
+    val toy: Toy = Toy(),
+    val relatedGame: Game? = null
+)
+
+data class PostAuthor(val username: String = "")
+data class Reply(val _id: String = "", val text: String = "", val user: PostAuthor? = null)
+
+data class Post(
+    val _id: String = "",
+    val title: String = "",
+    val body: String = "",
+    val board: String = "general",
+    val author: PostAuthor? = null,
+    val replies: List<Reply> = emptyList(),
+    val createdAt: String = ""
+)
+
+data class CommunityResponse(val posts: List<Post> = emptyList())
+data class PostDetailResponse(val post: Post = Post())
+
+data class RecommendationsResponse(
+    val topGenres: List<String> = emptyList(),
+    val recs: List<Game> = emptyList()
+)
+
+data class ProfileUser(
+    val _id: String = "",
+    val username: String = "",
+    val bio: String = "",
+    val avatar: String = "",
+    val displayName: String = "",
+    val role: String = "user",
+    val library: List<LibraryEntry> = emptyList(),
+    val wishlist: List<Game> = emptyList()
+)
+
+data class ProfileResponse(
+    val user: ProfileUser = ProfileUser(),
+    val orders: List<Order> = emptyList(),
+    val isSelf: Boolean = false
+)

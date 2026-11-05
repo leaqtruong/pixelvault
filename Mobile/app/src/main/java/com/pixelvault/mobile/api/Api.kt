@@ -74,6 +74,40 @@ interface PixelVaultApi {
 
     @POST("qrlogin/confirm")
     suspend fun qrConfirm(@Body body: Map<String, String>): Map<String, Any>
+
+    @GET("toys")
+    suspend fun toys(
+        @Query("category") category: String? = null,
+        @Query("brand") brand: String? = null,
+        @Query("sort") sort: String = "popular"
+    ): ToysResponse
+
+    @GET("toys/{slug}")
+    suspend fun toy(@Path("slug") slug: String): ToyDetailResponse
+
+    @POST("toys/{id}/wishlist")
+    suspend fun toyWishlist(@Path("id") id: String): Map<String, Any>
+
+    @GET("recommendations")
+    suspend fun recommendations(): RecommendationsResponse
+
+    @GET("community")
+    suspend fun community(): CommunityResponse
+
+    @GET("community/p/{id}")
+    suspend fun post(@Path("id") id: String): PostDetailResponse
+
+    @POST("community/new")
+    suspend fun newPost(@Body body: Map<String, String>): Map<String, Any>
+
+    @POST("community/p/{id}/reply")
+    suspend fun reply(@Path("id") id: String, @Body body: Map<String, String>): Map<String, Any>
+
+    @GET("users/{username}")
+    suspend fun profile(@Path("username") username: String): ProfileResponse
+
+    @POST("users/me")
+    suspend fun updateMe(@Body body: Map<String, String>): Map<String, Any>
 }
 
 class SessionInterceptor(private val prefs: SharedPreferences) : Interceptor {

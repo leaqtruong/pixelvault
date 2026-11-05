@@ -25,7 +25,7 @@ import java.util.Locale
 private fun money(v: Double): String = "$" + String.format(Locale.US, "%.2f", v)
 
 @Composable
-fun StoreScreen(onOpen: (String) -> Unit, onCart: () -> Unit) {
+fun StoreScreen(onOpen: (String) -> Unit, onCart: () -> Unit, onToys: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var genre by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableStateOf(0) }
@@ -46,6 +46,7 @@ fun StoreScreen(onOpen: (String) -> Unit, onCart: () -> Unit) {
             OutlinedTextField(query, { query = it }, label = { Text("Search") }, singleLine = true, modifier = Modifier.weight(1f))
             Button(onClick = { refresh++ }, modifier = Modifier.padding(start = 8.dp)) { Text("Go") }
             TextButton(onClick = onCart) { Text("Cart") }
+            TextButton(onClick = onToys) { Text("Merch") }
         }
         val genres = data?.genres ?: emptyList()
         if (genres.isNotEmpty()) {

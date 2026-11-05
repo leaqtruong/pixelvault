@@ -24,6 +24,13 @@ sealed class Route {
     data object Login : Route()
     data object Register : Route()
     data object QrScan : Route()
+    data object Toys : Route()
+    data class Toy(val slug: String) : Route()
+    data object Community : Route()
+    data class Post(val id: String) : Route()
+    data object NewPost : Route()
+    data object Recommendations : Route()
+    data class Profile(val username: String) : Route()
 }
 
 @Composable
@@ -42,7 +49,7 @@ fun App() {
         runCatching { Api.api.me().user }.onSuccess { if (it != null) user = it }
     }
 
-    val showTabs = current is Route.Store || current is Route.Library || current is Route.Orders || current is Route.Account
+    val showTabs = current is Route.Store || current is Route.Community || current is Route.Library || current is Route.Account
 
     Scaffold(
         bottomBar = {
@@ -50,10 +57,10 @@ fun App() {
                 NavigationBar {
                     NavigationBarItem(selected = current is Route.Store, onClick = { replace(Route.Store) },
                         icon = { Text("S") }, label = { Text("Store") })
+                    NavigationBarItem(selected = current is Route.Community, onClick = { replace(Route.Community) },
+                        icon = { Text("C") }, label = { Text("Community") })
                     NavigationBarItem(selected = current is Route.Library, onClick = { replace(Route.Library) },
                         icon = { Text("L") }, label = { Text("Library") })
-                    NavigationBarItem(selected = current is Route.Orders, onClick = { replace(Route.Orders) },
-                        icon = { Text("O") }, label = { Text("Orders") })
                     NavigationBarItem(selected = current is Route.Account, onClick = { replace(Route.Account) },
                         icon = { Text("A") }, label = { Text("Account") })
                 }
@@ -62,7 +69,7 @@ fun App() {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (current) {
-                is Route.Store -> StoreScreen(onOpen = { push(Route.Game(it)) }, onCart = { push(Route.Cart) })
+                is Route.Store -> StoreScreen(onOpen = { push(Route.Game(it)) }, onCart = { push(Route.Cart) }, onToys = { push(Route.Toys) })
                 is Route.Game -> GameScreen(current.slug, user, onBack = { pop() }, onCart = { push(Route.Cart) })
                 is Route.Cart -> CartScreen(onBack = { pop() }, onCheckout = { push(Route.Checkout) })
                 is Route.Checkout -> CheckoutScreen(onBack = { pop() }, onDone = { replace(Route.Orders) })
@@ -73,12 +80,22 @@ fun App() {
                     onLogin = { push(Route.Login) },
                     onRegister = { push(Route.Register) },
                     onQr = { push(Route.QrScan) },
+                    onOrders = { push(Route.Orders) },
+                    onRecommendations = { push(Route.Recommendations) },
+                    onProfile = { user?.let { push(Route.Profile(it.username)) } },
                     onLogout = {
                         runCatching { Api.api.logout() }
                         Api.logout()
                         user = null
                     }
                 )
+                is Route.Toys -> ToysScreen(onOpen = { push(Route.Toy(it)) }, onBack = { pop() })
+                is Route.Toy -> ToyDetailScreen(current.slug, onBack = { pop() })
+                is Route.Community -> CommunityScreen(onOpen = { push(Route.Post(it)) }, onNew = { push(Route.NewPost) })
+                is Route.Post -> PostDetailScreen(current.id, onBack = { pop() })
+                is Route.NewPost -> NewPostScreen(onDone = { pop() }, onBack = { pop() })
+                is Route.Recommendations -> RecommendationsScreen()
+                is Route.Profile -> ProfileScreen(current.username, onBack = { pop() })
                 is Route.Login -> LoginScreen(
                     onLogin = { user = it; pop() },
                     onRegister = { push(Route.Register) }
@@ -96,6 +113,9 @@ fun AccountScreen(
     onLogin: () -> Unit,
     onRegister: () -> Unit,
     onQr: () -> Unit,
+    onOrders: () -> Unit,
+    onRecommendations: () -> Unit,
+    onProfile: () -> Unit,
     onLogout: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -105,6 +125,9 @@ fun AccountScreen(
             OutlinedButton(onClick = onRegister) { Text("Join free") }
         } else {
             Text("Signed in as ${user.username} (${user.role})")
+            Button(onClick = onProfile) { Text("My profile") }
+            OutlinedButton(onClick = onOrders) { Text("Order history") }
+            OutlinedButton(onClick = onRecommendations) { Text("Recommendations") }
             Button(onClick = onQr) { Text("Scan web QR to sign in") }
             OutlinedButton(onClick = onLogout) { Text("Log out") }
         }
