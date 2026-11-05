@@ -9,6 +9,7 @@ const Review = require('../models/Review');
 const Mod = require('../models/Mod');
 const Post = require('../models/Post');
 const Payment = require('../models/Payment');
+const QrLogin = require('../models/QrLogin');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { decryptKey } = require('../lib/keyCrypto');
@@ -1336,6 +1337,59 @@ router.stack.forEach((layer) => {
       } catch (e) { next(e); }
     };
   });
+});
+
+// ---------- QR login ----------
+// Web side creates a token and shows it as a QR code; phone side confirms it.
+router.post('/qrlogin/request', async (req, res) => {
+  try {
+    const token = crypto.randomBytes(24).toString('base64url');
+    await QrLogin.create({ token });
+    res.json({ token, expiresIn: 90 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/qrlogin/status', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ error: 'Missing token.' });
+    const qr = await QrLogin.findOne({ token }).lean();
+    if (!qr) return res.json({ status: 'expired' });
+    res.json({ status: qr.status });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* The phone is already signed in (its session cookie rides along). It scanned
+   the code, so it can prove possession of the token and attach its user. */
+router.post('/qrlogin/confirm', needLogin, async (req, res) => {
+  try {
+    const { token } = req.body || {};
+    if (!token) return res.status(400).json({ error: 'Missing token.' });
+    const qr = await QrLogin.findOne({ token });
+    if (!qr) return res.status(404).json({ error: 'QR code expired or invalid.' });
+    if (qr.status !== 'pending') return res.status(409).json({ error: 'QR code already used.' });
+    qr.status = 'confirmed';
+    qr.user = req.session.user._id;
+    await qr.save();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* The web page, still polling on its own session cookie, consumes the
+   confirmed token and signs itself in. */
+router.post('/qrlogin/activate', async (req, res) => {
+  try {
+    const { token } = req.body || {};
+    if (!token) return res.status(400).json({ error: 'Missing token.' });
+    const qr = await QrLogin.findOne({ token });
+    if (!qr) return res.status(404).json({ error: 'QR code expired or invalid.' });
+    if (qr.status !== 'confirmed') return res.status(409).json({ error: 'Not confirmed yet.' });
+    req.session.user = { _id: qr.user, username: '', role: 'user', email: '' };
+    await QrLogin.deleteOne({ _id: qr._id });
+    const user = await User.findById(qr.user).select('username role email').lean();
+    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email };
+    res.json({ ok: true, user: me(req) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.use((req, res) => res.status(404).json({ error: `No API route for ${req.method} ${req.path}` }));
