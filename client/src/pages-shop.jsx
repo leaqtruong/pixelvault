@@ -459,7 +459,7 @@ export function GameDetail({ me }) {
 
           {!!news.length && (
             <div className="doc">
-              <h3>Steam news</h3>
+              <h3>News</h3>
               {news.map((n, ix) => (
                 <a key={ix} className="news-item" href={n.url} target="_blank" rel="noreferrer">
                   <b>{n.title}</b><br /><span>{n.feed} · {n.date ? new Date(n.date).toLocaleDateString() : ''}</span>

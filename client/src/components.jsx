@@ -113,26 +113,6 @@ function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
             </div>
           )}
 
-          <div className="rail-sec browse-only">
-            <h3>Sections</h3>
-            <div className="rail-links">
-              <Link to="/games">Store</Link>
-              <Link to="/toys">Toys</Link>
-              <Link to="/community">Community</Link>
-              <Link to="/mods">Mods</Link>
-              <Link to="/dev">Dev Portal</Link>
-            </div>
-          </div>
-
-          <div className="rail-sec browse-only">
-            <h3>For you</h3>
-            <div className="rail-links">
-              <Link to="/recommendations">Recommendations</Link>
-              <Link to="/games?sort=popular">Top sellers</Link>
-              <Link to="/games?sort=newest">Just released</Link>
-              <Link to="/games?sort=rating">Top rated</Link>
-            </div>
-          </div>
         </div>
       </div>
       <button className="side-edge" title={collapsed ? 'Show panel' : 'Hide panel'}
