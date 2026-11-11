@@ -4,3 +4,4 @@ node_modules/
 .mongo-logs/
 .DS_Store
 Thumbs.db
+*.pptx

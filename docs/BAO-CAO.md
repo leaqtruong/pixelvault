@@ -1,6 +1,6 @@
 # BÁO CÁO ĐỒ ÁN — PIXELVAULT
 
-PixelVault là cửa hàng game số + merch vật lý, gồm React SPA, Node/Express API, MongoDB, thanh toán VNPay sandbox và app Android Kotlin. Tài liệu này trình bày cơ sở dữ liệu (biểu đồ class, dữ liệu thực tế) và từng chức năng (giao diện + luồng xử lý).
+PixelVault là cửa hàng game số + merch vật lý, gồm React SPA, Node/Express API, MongoDB, thanh toán VNPay sandbox và app Android Kotlin. Tài liệu này trình bày cơ sở dữ liệu (biểu đồ class, dữ liệu trong database) và từng chức năng (giao diện + luồng xử lý).
 
 ---
 
@@ -200,24 +200,24 @@ classDiagram
 ### qrlogins
 `token` (unique), `status` (pending/confirmed), `user`, `createdAt` (TTL 90 giây).
 
-## 1.4 Dữ liệu thực tế trong database
+## 1.4 Dữ liệu trong database
 
 | Collection | Số document | Vai trò |
 |---|---:|---|
 | `users` | 7 | 3 tài khoản demo (gamer / dev / mod) + 1 admin + 3 tài khoản test |
-| `games` | 74 | Catalog game thật lấy từ Steam Store API |
+| `games` | 74 | Catalog game đồng bộ từ Steam Store API |
 | `toys` | 12 | Merch vật lý (plush, figure, …) |
 | `reviews` | 14 | Đánh giá của người dùng |
 | `posts` | 1 | Bài cộng đồng |
-| `orders` | 0 | Chưa phát sinh đơn đã thanh toán |
-| `gamekeys` | 0 | Key chỉ được tạo khi đơn được fulfilment |
-| `payments` | 0 | Chưa có giao dịch gateway |
+| `orders` | 4 | 1 đơn `paid` + 3 đơn `cancelled` (thử thanh toán) |
+| `gamekeys` | 1 | Key DEMO cấp khi đơn `paid` được fulfilment |
+| `payments` | 4 | 1 `success` + 3 `pending` |
 | `qrlogins` | 0 | Token QR dùng một lần, tự hết hạn |
 | `sessions` | 25 | Phiên đăng nhập đang lưu trong MongoDB |
 | `images.files` | 394 | Ảnh trong GridFS |
 | `images.chunks` | 744 | Các chunk nhị phân của ảnh |
 
-### Ví dụ document thực tế
+### Ví dụ document
 
 **users — `vaultdweller`**
 ```json
@@ -304,6 +304,52 @@ classDiagram
 }
 ```
 
+**orders — đơn đã thanh toán**
+```json
+{
+  "_id": "6af4ba500d61444671a83445",
+  "user": "6ac6e947b5813ede94f1c3a9",
+  "status": "paid",
+  "paidAt": "2026-11-11T18:56:16.699Z",
+  "items": [{ "title": "Terraria", "edition": "digital", "qty": 1,
+              "unitPrice": 9.99, "keyIds": ["6af4ba500d61444671a83450"] }],
+  "subtotal": 9.99, "tax": 0.8, "shippingTotal": 0, "grandTotal": 10.79,
+  "devPayouts": [{ "developer": "6ac6e947b5813ede94f1c3a8",
+                   "gross": 9.99, "cut": 6.99 }]
+}
+```
+
+**gamekeys — key đã cấp**
+```json
+{
+  "_id": "6af4ba500d61444671a83450",
+  "game": "6acc33194fda3c326e2e2a3f",
+  "source": "demo",
+  "codeEnc": "<AES-256-GCM payload>",
+  "codeHash": "5f6bbb0c2637…",
+  "status": "sold",
+  "order": "6af4ba500d61444671a83445",
+  "user": "6ac6e947b5813ede94f1c3a9",
+  "soldAt": "2026-11-11T18:56:16.703Z"
+}
+```
+
+**payments — giao dịch sandbox**
+```json
+{
+  "_id": "6af4ba500d61444671a83447",
+  "orderId": "PVMWCHCISS55CDC6",
+  "gatewayOrderId": "PVMWCHCISS55CDC6",
+  "amount": 269750,
+  "currency": "VND",
+  "provider": "sandbox",
+  "live": false,
+  "status": "success",
+  "responseCode": "00",
+  "settledAt": "2026-11-11T18:56:16.695Z"
+}
+```
+
 ## 1.5 Index chính
 
 | Collection | Index | Mục đích |
@@ -381,7 +427,7 @@ sequenceDiagram
 
 ## 2.3 Trang chủ
 
-**Giao diện:** `/` — hero, ledger số liệu thật, featured, deals, hàng mới, toy shelf, forum strip.
+**Giao diện:** `/` — hero, ledger số liệu, featured, deals, hàng mới, toy shelf, forum strip.
 
 ![Home](screens/01-home.png)
 
