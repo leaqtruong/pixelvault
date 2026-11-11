@@ -85,7 +85,7 @@ router.use((req, res, next) => {
 // Public, session-independent GETs get a short TTL cache. Anything that reads
 // the signed-in user (library, cart, orders, recommendations, games-with-
 // mature-filter) is deliberately excluded.
-const CACHEABLE = new Set(['/home', '/stats', '/toys', '/community']);
+const CACHEABLE = new Set(['/home', '/stats', '/toys', '/community', '/deals']);
 router.use((req, res, next) => {
   if (req.method === 'GET' && CACHEABLE.has(req.path)) return cache(30)(req, res, next);
   next();
@@ -320,6 +320,20 @@ router.get('/home', async (req, res) => {
       orders: orderAgg,
     };
     res.json({ featured, deals, fresh, threads, toys, catTiles, ledger });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- deals ----------
+/* Small, cacheable payload for the sidebar deal list. */
+router.get('/deals', async (req, res) => {
+  try {
+    const limit = Math.min(6, Math.max(1, parseInt(req.query.limit, 10) || 3));
+    const deals = await Game.find({ status: 'published', productType: { $ne: 'toy' }, discountPct: { $gt: 0 } })
+      .sort({ discountPct: -1 })
+      .limit(limit)
+      .select('title slug coverImage price discountPct')
+      .lean();
+    res.json({ deals });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

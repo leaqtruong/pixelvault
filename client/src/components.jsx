@@ -42,42 +42,64 @@ export const useToast = () => useContext(ToastCtx);
 /* ===================================================================
    SIDEBAR — hairline ledger of sections, not a stack of brown boxes
    =================================================================== */
-function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
-  const nav = useNavigate();
+function Sidebar({ me, theme, onTheme, collapsed, onToggle, cartCount = 0 }) {
   const loc = useLocation();
   /* The login and register pages already contain the sign-in / join form.
      Showing the guest CTA in the rail as well would repeat those two buttons. */
   const authPage = loc.pathname === '/login' || loc.pathname === '/register';
   const [mature, setMature] = useState(null);
+  const [wishCount, setWishCount] = useState(0);
+  const [recent, setRecent] = useState([]);
+  const [deals, setDeals] = useState([]);
+
   useEffect(() => {
-    if (me) api('/users/' + me.username).then((d) => setMature(!!d.user?.preferences?.matureFilter)).catch(() => {});
+    if (!me) { setMature(null); setWishCount(0); return; }
+    api('/users/' + me.username)
+      .then((d) => {
+        setMature(!!d.user?.preferences?.matureFilter);
+        setWishCount((d.user?.wishlist || []).length + (d.user?.toyWishlist || []).length);
+      })
+      .catch(() => {});
   }, [me]);
+
+  useEffect(() => {
+    const read = () => {
+      try { setRecent((JSON.parse(localStorage.getItem('pv:recent') || '[]') || []).slice(0, 3)); } catch { setRecent([]); }
+    };
+    read();
+    window.addEventListener('pv:recent', read);
+    return () => window.removeEventListener('pv:recent', read);
+  }, [loc.pathname]);
+
+  useEffect(() => {
+    api('/deals?limit=2').then((d) => setDeals(d.deals || [])).catch(() => {});
+  }, []);
+
   const flipMature = async () => {
     try {
       await api('/users/me', { method: 'POST', body: { matureFilter: !mature } });
       setMature(!mature);
     } catch {}
   };
-  const logout = async () => { await api('/auth/logout', { method: 'POST' }); onLogout(); nav('/'); };
   return (
     <aside className="side-rail" aria-label="Account and settings">
       <div className="side-clip">
         <div className="side-in">
           {me ? (
             <div className="rail-sec">
-              <div className="rail-user">
+              <Link className="rail-user" to={`/users/${me.username}`}>
                 <span className="avatar-chip lg">{(me.username || '?')[0].toUpperCase()}</span>
                 <div><b>{me.username}</b><br /><span className="tiny">{me.role}</span></div>
-              </div>
+              </Link>
               <div className="rail-links">
                 <Link to="/library">My Library</Link>
                 <Link to="/orders">Orders</Link>
-                <Link to={`/users/${me.username}`}>Profile</Link>
                 <Link to="/settings">Settings</Link>
                 {me.role === 'admin' && <Link to="/admin">Admin desk</Link>}
               </div>
-              <div className="rail-cta">
-                <button className="ghost-btn sm" onClick={logout}>Log out</button>
+              <div className="rail-pair">
+                <Link to="/library?tab=wishlist">Wishlist{wishCount ? ` (${wishCount})` : ''}</Link>
+                <Link to="/cart">Cart{cartCount ? ` (${cartCount})` : ''}</Link>
               </div>
             </div>
           ) : authPage ? (
@@ -85,7 +107,6 @@ function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
               <h3>Why join</h3>
               <p className="tiny">One account keeps your library, orders, wishlist and forum posts together.</p>
               <div className="rail-links">
-                <Link to="/support">Support &amp; refunds</Link>
                 <Link to="/community">Community forum</Link>
                 <Link to="/games">Browse the catalog</Link>
               </div>
@@ -95,12 +116,40 @@ function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
               <h3>Browsing as guest</h3>
               <p className="tiny">Keys, collectibles and order tracking unlock when you join.</p>
               <div className="rail-links">
-                <Link to="/games?onSale=1">Today's deals</Link>
+                <Link to="/cart">Cart{cartCount ? ` (${cartCount})` : ''}</Link>
                 <Link to="/register">Why join?</Link>
               </div>
               <div className="rail-cta">
                 <Link className="cta-btn sm" to="/register">Join free</Link>
                 <Link className="ghost-btn sm" to="/login">Log in</Link>
+              </div>
+            </div>
+          )}
+
+          {recent.length > 0 && (
+            <div className="rail-sec">
+              <h3>Recently viewed</h3>
+              <div className="rail-recent">
+                {recent.map((g) => (
+                  <Link key={g.slug} className="rail-thumb" to={'/games/' + g.slug} title={g.title}>
+                    <img src={g.coverImage} alt={g.title} loading="lazy" />
+                    <span>{g.title}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {deals.length > 0 && (
+            <div className="rail-sec">
+              <h3><Link to="/games?onSale=1">Today's deals</Link></h3>
+              <div className="rail-deals">
+                {deals.map((g) => (
+                  <Link key={g.slug} className="rail-deal" to={'/games/' + g.slug}>
+                    <span className="rail-deal-t">{g.title}</span>
+                    <span className="rail-deal-b">-{g.discountPct}%</span>
+                  </Link>
+                ))}
               </div>
             </div>
           )}
@@ -111,21 +160,17 @@ function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
               <button className={'ghost-btn sm' + (theme === 'dark' ? ' current' : '')} onClick={() => onTheme('dark')}>Dark</button>
               <button className={'ghost-btn sm' + (theme === 'light' ? ' current' : '')} onClick={() => onTheme('light')}>Light</button>
             </div>
-          </div>
-
-          {me && (
-            <div className="rail-sec">
-              <h3>Age filter</h3>
-              <button className={'ghost-btn sm' + (mature ? ' current' : '')} onClick={flipMature}>
+            {me && (
+              <button className={'ghost-btn sm' + (mature ? ' current' : '')} onClick={flipMature}
+                title="Hides only titles a developer rated M or AO. Steam-imported titles carry no age rating."
+                style={{ marginTop: 8 }}>
                 {mature ? 'Showing all' : 'Hide M and AO'}
               </button>
-              <p className="tiny" style={{ marginTop: 8, marginBottom: 0 }}>
-                Only titles a developer has rated M or AO are hidden. Titles mirrored
-                from the Steam Store carry no age rating, so this does not change the
-                imported catalog.
-              </p>
+            )}
+            <div className="rail-links" style={{ marginTop: 'var(--s3)' }}>
+              <Link to="/support">Support &amp; refunds</Link>
             </div>
-          )}
+          </div>
 
         </div>
       </div>
@@ -235,8 +280,8 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
 
       <div className={'shell' + (menu ? ' menu-open' : '') + (hideSide ? ' no-side' : '')}>
         {menu && <div className="scrim" onClick={() => setMenu(false)} />}
-        <Sidebar me={me} onLogout={onLogout} theme={theme} onTheme={onTheme}
-          collapsed={hideSide} onToggle={() => setHideSide(!hideSide)} />
+        <Sidebar me={me} theme={theme} onTheme={onTheme}
+          collapsed={hideSide} onToggle={() => setHideSide(!hideSide)} cartCount={cartN} />
         <div className="shell-main">
           <main className="wrap page-enter" key={loc.pathname + loc.search}>{children}</main>
           <footer className="footer">

@@ -330,8 +330,9 @@ export function OrderDetail() {
 }
 
 export function Library() {
+  const [sp] = useSearchParams();
   const [d, setD] = useState(null);
-  const [tab, setTab] = useState('games');
+  const [tab, setTab] = useState(() => sp.get('tab') || 'games');
   const [q, setQ] = useState('');
   const toast = useToast();
   useEffect(() => { api('/library').then(setD).catch(() => setD(null)); }, []);

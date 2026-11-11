@@ -316,6 +316,17 @@ export function GameDetail({ me }) {
       .then((r) => setRel((r.games || []).filter((x) => x._id !== d.game._id).slice(0, 4)))
       .catch(() => {});
   }, [d?.game?._id]);
+  useEffect(() => {
+    if (!d?.game) return;
+    const g = d.game;
+    try {
+      const prev = JSON.parse(localStorage.getItem('pv:recent') || '[]');
+      const next = [{ slug: g.slug, title: g.title, coverImage: g.coverImage },
+        ...prev.filter((x) => x && x.slug !== g.slug)].slice(0, 3);
+      localStorage.setItem('pv:recent', JSON.stringify(next));
+      window.dispatchEvent(new Event('pv:recent'));
+    } catch {}
+  }, [d?.game?.slug]);
   const nav = useNavigate();
   if (err) return <p className="err">{err}</p>;
   if (!d) return <p className="muted">Loading…</p>;
