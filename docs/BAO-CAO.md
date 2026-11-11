@@ -209,9 +209,9 @@ classDiagram
 | `toys` | 12 | Merch vật lý (plush, figure, …) |
 | `reviews` | 14 | Đánh giá của người dùng |
 | `posts` | 1 | Bài cộng đồng |
-| `orders` | 4 | 1 đơn `paid` + 3 đơn `cancelled` (thử thanh toán) |
-| `gamekeys` | 1 | Key DEMO cấp khi đơn `paid` được fulfilment |
-| `payments` | 4 | 1 `success` + 3 `pending` |
+| `orders` | 0 | Chưa phát sinh đơn |
+| `gamekeys` | 0 | Key chỉ sinh khi đơn được fulfilment |
+| `payments` | 0 | Chưa có giao dịch gateway |
 | `qrlogins` | 0 | Token QR dùng một lần, tự hết hạn |
 | `sessions` | 25 | Phiên đăng nhập đang lưu trong MongoDB |
 | `images.files` | 394 | Ảnh trong GridFS |
@@ -304,51 +304,7 @@ classDiagram
 }
 ```
 
-**orders — đơn đã thanh toán**
-```json
-{
-  "_id": "6af4ba500d61444671a83445",
-  "user": "6ac6e947b5813ede94f1c3a9",
-  "status": "paid",
-  "paidAt": "2026-11-11T18:56:16.699Z",
-  "items": [{ "title": "Terraria", "edition": "digital", "qty": 1,
-              "unitPrice": 9.99, "keyIds": ["6af4ba500d61444671a83450"] }],
-  "subtotal": 9.99, "tax": 0.8, "shippingTotal": 0, "grandTotal": 10.79,
-  "devPayouts": [{ "developer": "6ac6e947b5813ede94f1c3a8",
-                   "gross": 9.99, "cut": 6.99 }]
-}
-```
-
-**gamekeys — key đã cấp**
-```json
-{
-  "_id": "6af4ba500d61444671a83450",
-  "game": "6acc33194fda3c326e2e2a3f",
-  "source": "demo",
-  "codeEnc": "<AES-256-GCM payload>",
-  "codeHash": "5f6bbb0c2637…",
-  "status": "sold",
-  "order": "6af4ba500d61444671a83445",
-  "user": "6ac6e947b5813ede94f1c3a9",
-  "soldAt": "2026-11-11T18:56:16.703Z"
-}
-```
-
-**payments — giao dịch sandbox**
-```json
-{
-  "_id": "6af4ba500d61444671a83447",
-  "orderId": "PVMWCHCISS55CDC6",
-  "gatewayOrderId": "PVMWCHCISS55CDC6",
-  "amount": 269750,
-  "currency": "VND",
-  "provider": "sandbox",
-  "live": false,
-  "status": "success",
-  "responseCode": "00",
-  "settledAt": "2026-11-11T18:56:16.695Z"
-}
-```
+**orders / gamekeys / payments** hiện chưa có document. Cấu trúc của chúng được mô tả ở mục 1.3; key chỉ được tạo khi một đơn `paid` được fulfilment.
 
 ## 1.5 Index chính
 
