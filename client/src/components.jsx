@@ -44,6 +44,10 @@ export const useToast = () => useContext(ToastCtx);
    =================================================================== */
 function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
   const nav = useNavigate();
+  const loc = useLocation();
+  /* The login and register pages already contain the sign-in / join form.
+     Showing the guest CTA in the rail as well would repeat those two buttons. */
+  const authPage = loc.pathname === '/login' || loc.pathname === '/register';
   const [mature, setMature] = useState(null);
   useEffect(() => {
     if (me) api('/users/' + me.username).then((d) => setMature(!!d.user?.preferences?.matureFilter)).catch(() => {});
@@ -74,6 +78,16 @@ function Sidebar({ me, onLogout, theme, onTheme, collapsed, onToggle }) {
               </div>
               <div className="rail-cta">
                 <button className="ghost-btn sm" onClick={logout}>Log out</button>
+              </div>
+            </div>
+          ) : authPage ? (
+            <div className="rail-sec">
+              <h3>Why join</h3>
+              <p className="tiny">One account keeps your library, orders, wishlist and forum posts together.</p>
+              <div className="rail-links">
+                <Link to="/support">Support &amp; refunds</Link>
+                <Link to="/community">Community forum</Link>
+                <Link to="/games">Browse the catalog</Link>
               </div>
             </div>
           ) : (
@@ -168,8 +182,8 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
               </>
             ) : (
               <>
-                <Link className="ghost-btn sm" to="/login">Log in</Link>
-                <Link className="install-btn" to="/register">Join free</Link>
+                {loc.pathname !== '/login' && <Link className="ghost-btn sm" to="/login">Log in</Link>}
+                {loc.pathname !== '/register' && <Link className="install-btn" to="/register">Join free</Link>}
               </>
             )}
           </div>
