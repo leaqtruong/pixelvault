@@ -51,7 +51,7 @@ function platformKey(k) {
 
     if (!d) { missing++; console.log(`  ${g.title}: store API unreachable, left as-is`); await sleep(700); continue; }
 
-    const minimum = {}, recommended = {}, lines = {};
+    const minimum = {}, recommended = {}, lines = {}, specs = {};
     let flatMin = null, flatRec = null;
     for (const [key, block] of Object.entries({
       Windows: d.pc_requirements, Mac: d.mac_requirements, Linux: d.linux_requirements,
@@ -59,12 +59,15 @@ function platformKey(k) {
       if (!block) continue;
       const min = reqLines(block.minimum);
       const rec = reqLines(block.recommended);
-      if (min.length) minimum[key] = summarise(reqFields(min), g.systemReq?.os || '');
-      if (rec.length) recommended[key] = summarise(reqFields(rec), '');
+      const minFields = reqFields(min);
+      const recFields = reqFields(rec);
+      if (min.length) minimum[key] = summarise(minFields, g.systemReq?.os || '');
+      if (rec.length) recommended[key] = summarise(recFields, '');
       const all = [...min, ...rec];
       if (all.length) lines[key] = all;
+      if (min.length || rec.length) specs[key] = { minimum: minFields, recommended: recFields };
       if (key === 'Windows') {
-        const mf = reqFields(min), rf = reqFields(rec);
+        const mf = minFields, rf = recFields;
         flatMin = { os: mf.os, cpu: mf.cpu, ram: mf.ram, gpu: mf.gpu, storage: mf.storage };
         const src = Object.keys(rf).length ? rf : mf;
         flatRec = { os: src.os, cpu: src.cpu, ram: src.ram, gpu: src.gpu, storage: src.storage };
@@ -102,7 +105,7 @@ function platformKey(k) {
           : '',
       };
       if (hasReq) {
-        set.systemReq = { ...(flatMin || {}), minimum, recommended, lines, source: 'Steam Store API' };
+        set.systemReq = { ...(flatMin || {}), minimum, recommended, lines, specs, source: 'Steam Store API' };
       }
       await db.collection('games').updateOne({ _id: g._id }, { $set: set });
     }

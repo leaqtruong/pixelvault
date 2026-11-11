@@ -54,6 +54,10 @@ const gameSchema = new mongoose.Schema({
     recommended: { type: Map, of: String, default: {} },
     // the individual spec lines, so the detail page can list them verbatim
     lines: { type: Map, of: [String], default: {} },
+    // structured per-platform fields (os/cpu/ram/gpu/api/storage/sound) for
+    // the minimum and recommended builds, so the detail page can render the
+    // two-column table Steam shows instead of one joined sentence.
+    specs: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} },
     source: { type: String, default: '' },
   },
   publisher: { type: String, default: '' },

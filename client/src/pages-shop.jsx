@@ -340,11 +340,11 @@ export function GameDetail({ me }) {
   const asObj = (m) => (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
   const minMap = asObj(game.systemReq?.minimum);
   const recMap = asObj(game.systemReq?.recommended);
-  const lineMap = asObj(game.systemReq?.lines);
+  const specMap = asObj(game.systemReq?.specs);
   const req = {
-    minimum: minMap, recommended: recMap,
-    platforms: [...new Set([...Object.keys(minMap), ...Object.keys(recMap)])],
-    detail: (lineMap.Windows || []),
+    minimum: minMap, recommended: recMap, specs: specMap,
+    hasSpecs: Object.keys(specMap).length > 0,
+    platforms: [...new Set([...Object.keys(minMap), ...Object.keys(recMap), ...Object.keys(specMap)])],
     source: game.systemReq?.source || '',
   };
   const add = async (edition) => {
@@ -414,28 +414,50 @@ export function GameDetail({ me }) {
 
             <h5>System requirements</h5>
             {req.platforms.length ? (
-              <table className="req_tbl">
-                <thead>
-                  <tr><th>Platform</th><th>Minimum</th><th>Recommended</th></tr>
-                </thead>
-                <tbody>
-                  {req.platforms.map((p) => (
-                    <tr key={p}>
-                      <td className="req_os">{p}</td>
-                      <td>{req.minimum[p] || <span className="tiny">—</span>}</td>
-                      <td>{req.recommended[p] || <span className="tiny">—</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              req.hasSpecs ? (
+                <div className="req_specs">
+                  {req.platforms.map((p) => {
+                    const spec = req.specs[p];
+                    if (!spec) return null;
+                    const rows = [
+                      ['os', 'OS'], ['cpu', 'Processor'], ['ram', 'Memory'],
+                      ['gpu', 'Graphics'], ['api', 'DirectX'], ['storage', 'Storage'], ['sound', 'Sound'],
+                    ].filter(([k]) => spec.minimum?.[k] || spec.recommended?.[k]);
+                    return (
+                      <div className="req_platform" key={p}>
+                        <h6>{p}</h6>
+                        <table className="req_tbl">
+                          <thead><tr><th>Minimum</th><th>Recommended</th></tr></thead>
+                          <tbody>
+                            {rows.map(([k, label]) => (
+                              <tr key={k}>
+                                <td><span className="req_key">{label}:</span>{spec.minimum?.[k] || '—'}</td>
+                                <td><span className="req_key">{label}:</span>{spec.recommended?.[k] || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <table className="req_tbl summary">
+                  <thead>
+                    <tr><th>Platform</th><th>Minimum</th><th>Recommended</th></tr>
+                  </thead>
+                  <tbody>
+                    {req.platforms.map((p) => (
+                      <tr key={p}>
+                        <td className="req_os">{p}</td>
+                        <td>{req.minimum[p] || <span className="tiny">—</span>}</td>
+                        <td>{req.recommended[p] || <span className="tiny">—</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
             ) : <p className="tiny">Steam does not publish system requirements for this title.</p>}
-
-            {req.detail.length > 0 && (
-              <details className="req_more">
-                <summary>Full spec, {req.detail.length} {req.detail.length === 1 ? 'line' : 'lines'}</summary>
-                {req.detail.map((line, i) => <p key={i}>{line}</p>)}
-              </details>
-            )}
             {req.source && <p className="tiny" style={{ marginTop: 10 }}>Mirrored from the {req.source}.</p>}
           </div>
 
