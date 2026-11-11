@@ -400,7 +400,7 @@ export function GameDetail({ me }) {
           <div className="doc">
             <h3>About this game</h3>
             <p style={{ fontSize: 13.5 }}>{(game.description || '').replace(/<[^>]*>/g, '')}</p>
-            <div>{(game.tags || game.genres || []).map((t) => (
+            <div className="tags">{(game.tags || game.genres || []).map((t) => (
               <Link key={t} className="tag" to={`/games?tag=${encodeURIComponent(t)}`}>{t}</Link>
             ))}</div>
           </div>
@@ -459,7 +459,7 @@ export function GameDetail({ me }) {
           {!!(game.categories || game.features || []).length && (
             <div className="doc">
               <h3>Features</h3>
-              <div>
+              <div className="tags">
                 {[...new Set([...(game.categories || []), ...(game.features || [])])].map((f) => (
                   <span className="tag" key={f}>{f}</span>
                 ))}

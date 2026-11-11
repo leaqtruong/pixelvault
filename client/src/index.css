@@ -368,6 +368,7 @@ code{font-family:var(--font-mono);background:var(--card-2);border:1px solid var(
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .gcard:hover .gmeta b{color:var(--accent)}
 .genres{color:var(--faint);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
 .tag{background:transparent;border:1px solid var(--rule);color:var(--dim);font-size:10.5px;
   font-weight:600;padding:3px 9px;letter-spacing:.03em}
 a.tag:hover{border-color:var(--rule-accent);color:var(--accent)}
