@@ -18,6 +18,7 @@ const gateway = require('../lib/paymentGateway');
 const steamPrice = require('../lib/steamPrice');
 const loginLimiter = require('../lib/loginLimiter');
 const cache = require('../lib/cache');
+const { getBucket } = require('../lib/gridfs');
 
 const router = express.Router();
 
@@ -1399,6 +1400,24 @@ router.post('/qrlogin/activate', async (req, res) => {
     const user = await User.findById(qr.user).select('username role email').lean();
     req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email };
     res.json({ ok: true, user: me(req) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- media (GridFS) ----------
+// Images are stored in MongoDB GridFS and served here, so the storefront does
+// not hotlink Steam's CDN. The URL is just /api/media/<fileId>.
+router.get('/media/:id', async (req, res) => {
+  try {
+    if (!isObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid image id.' });
+    const bucket = getBucket();
+    const id = new mongoose.Types.ObjectId(req.params.id);
+    const files = await bucket.find({ _id: id }).toArray();
+    if (!files.length) return res.status(404).end();
+    res.set('Content-Type', files[0].contentType || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    const stream = bucket.openDownloadStream(id);
+    stream.on('error', () => { try { res.status(404).end(); } catch {} });
+    stream.pipe(res);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
