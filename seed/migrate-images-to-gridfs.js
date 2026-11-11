@@ -12,7 +12,6 @@ const mongoose = require('mongoose');
 const { GridFSBucket } = require('mongoose').mongo;
 const Game = require('../models/Game');
 const Toy = require('../models/Toy');
-const Mod = require('../models/Mod');
 
 const contentTypeFor = (url) => (
   /\.png(\?|$)/i.test(url) ? 'image/png'
@@ -78,21 +77,8 @@ async function main() {
     }
   }
 
-  async function migrateMods() {
-    const rows = await Mod.find({}).lean();
-    console.log(`mods: ${rows.length}`);
-    for (const m of rows) {
-      const preview = await upload(m.previewImage);
-      const shots = [];
-      for (const s of (m.screenshots || [])) shots.push(await upload(s));
-      await Mod.updateOne({ _id: m._id }, { $set: { previewImage: preview, screenshots: shots } });
-      await sleep(100);
-    }
-  }
-
   await migrateGames();
   await migrateToys();
-  await migrateMods();
 
   console.log(`\nuploaded ${uploaded}, already-local ${kept}, failed ${failed}`);
   await mongoose.disconnect();

@@ -8,7 +8,6 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Game = require('../models/Game');
 const GameKey = require('../models/GameKey');
-const Mod = require('../models/Mod');
 const Post = require('../models/Post');
 const { encryptKey, hashKey, makeDemoKey } = require('../lib/keyCrypto');
 const { resolveArt } = require('./steamArt');
@@ -81,7 +80,6 @@ function mapGame(appid, d, i, art = {}) {
     status: 'published',
     featured: [105600, 1973530, 632360, 367520, 730].includes(appid),
     releaseDate: d.release_date?.date ? new Date(d.release_date.date) : new Date(Date.now() - i * 86400000 * 30),
-    modSupport: true,
     steamAppId: appid,
     /* Counters start at zero and are only ever raised by something that really
        happened: a page view, a paid order, a review written on this site. The
@@ -98,7 +96,7 @@ function mapGame(appid, d, i, art = {}) {
 async function main() {
   await mongoose.connect(MONGO);
   console.log('[import] connected');
-  await Promise.all([Game.deleteMany({}), GameKey.deleteMany({}), Mod.deleteMany({}), Post.deleteMany({}), User.deleteMany({})]);
+  await Promise.all([Game.deleteMany({}), GameKey.deleteMany({}), Post.deleteMany({}), User.deleteMany({})]);
   try { await Game.syncIndexes(); await GameKey.syncIndexes(); } catch {}
 
   const pw = await bcrypt.hash('password123', 10);

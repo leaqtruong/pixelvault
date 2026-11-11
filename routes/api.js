@@ -6,7 +6,6 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const Toy = require('../models/Toy');
 const Review = require('../models/Review');
-const Mod = require('../models/Mod');
 const Post = require('../models/Post');
 const Payment = require('../models/Payment');
 const QrLogin = require('../models/QrLogin');
@@ -86,7 +85,7 @@ router.use((req, res, next) => {
 // Public, session-independent GETs get a short TTL cache. Anything that reads
 // the signed-in user (library, cart, orders, recommendations, games-with-
 // mature-filter) is deliberately excluded.
-const CACHEABLE = new Set(['/home', '/stats', '/toys', '/community', '/mods']);
+const CACHEABLE = new Set(['/home', '/stats', '/toys', '/community']);
 router.use((req, res, next) => {
   if (req.method === 'GET' && CACHEABLE.has(req.path)) return cache(30)(req, res, next);
   next();
@@ -163,14 +162,13 @@ function paginate(list, page, limit) {
 // ---------- games ----------
 router.get('/games', async (req, res) => {
   try {
-    const { q, genre, tag, platform, feature, sort = 'popular', maxPrice, onSale, moddable, page = '1', limit = '24' } = req.query;
+    const { q, genre, tag, platform, feature, sort = 'popular', maxPrice, onSale, page = '1', limit = '24' } = req.query;
     const filter = { status: 'published', productType: { $ne: 'toy' } };
     if (genre) filter.genres = genre;
     if (tag) filter.tags = tag;
     if (platform) filter.platforms = platform;
     if (feature) filter.features = feature;
     if (onSale === '1') filter.discountPct = { $gt: 0 };
-    if (moddable === '1') filter.modSupport = true;
     // Honor the viewer's "hide mature titles" setting.
     try {
       const viewer = req.session.user ? await User.findById(req.session.user._id).lean() : null;
@@ -223,13 +221,12 @@ router.get('/games/:slug', async (req, res) => {
     // button can render in its "voted" state without a second request.
     const meId = req.session.user && String(req.session.user._id);
     if (meId) for (const r of reviews) r.helpful = (r.helpful || []).map(String);
-    const mods = await Mod.find({ game: game._id, status: 'published' }).sort({ 'stats.downloads': -1 }).limit(6).lean();
     const threads = await Post.find({ game: game._id }).sort({ createdAt: -1 }).limit(5).populate('author', 'username').lean();
     /* Nothing to count: a digital key is obtained when the order is fulfilled,
        so a listing is buyable whenever it has a price. `buyable` replaces the
        old keysAvailable counter, which could only ever be a made-up number. */
     const buyable = game.price > 0;
-    res.json({ game, reviews, mods, threads, buyable, supplier: supplierConfigured(), me: meId || null });
+    res.json({ game, reviews, threads, buyable, supplier: supplierConfigured(), me: meId || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1142,7 +1139,7 @@ router.post('/dev/toys/:id/restock', needDev, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- community & mods (read + post) ----------
+// ---------- community (read + post) ----------
 router.get('/community', async (req, res) => {
   const { board, game } = req.query;
   const filter = {};
@@ -1171,61 +1168,14 @@ router.post('/community/p/:id/reply', needLogin, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/mods', async (req, res) => {
-  const filter = { status: 'published' };
-  if (req.query.game) filter.game = req.query.game;
-  // 'steam' restricts to mirrored entries, 'local' to PixelVault uploads
-  if (req.query.source === 'steam') filter['source.provider'] = 'steam-workshop';
-  if (req.query.source === 'local') filter['source.provider'] = { $exists: false };
-
-  const sort = req.query.sort === 'new' ? { 'mirror.updatedAt': -1, createdAt: -1 }
-    : req.query.sort === 'size' ? { 'mirror.fileSize': -1 }
-      : { 'mirror.subscriptions': -1, createdAt: -1 };
-
-  const mods = await Mod.find(filter)
-    .populate('author', 'username')
-    .populate('game', 'title slug coverImage steamAppId')
-    .sort(sort).limit(Number(req.query.limit) || 60).lean();
-  res.json({ mods });
-});
-
-router.get('/mods/:id', async (req, res) => {
-  const mod = await Mod.findById(req.params.id)
-    .populate('author', 'username')
-    .populate('game', 'title slug coverImage steamAppId')
-    .lean();
-  if (!mod) return res.status(404).json({ error: 'Not found' });
-  res.json({ mod });
-});
-
-router.post('/mods/new', needLogin, async (req, res) => {
-  let { game, title, tagline, description, version, downloadUrl, tags } = req.body;
-  if (!game || !title) return res.status(400).json({ error: 'Game + title required.' });
-  if (!String(game).match(/^[0-9a-fA-F]{24}$/)) {
-    const g = await Game.findOne({ slug: String(game) });
-    if (!g) return res.status(400).json({ error: 'Game not found — paste its store slug.' });
-    game = g._id;
-  }
-  const m = await Mod.create({
-    game, title: String(title).slice(0, 120), tagline: String(tagline || '').slice(0, 200),
-    description: String(description || '').slice(0, 4000), author: req.session.user._id,
-    // left unset when the uploader does not supply one — no placeholder version
-    version: String(version || '').trim() || undefined, downloadUrl: downloadUrl || '',
-    tags: Array.isArray(tags) ? tags : String(tags || '').split(',').map((s) => s.trim()).filter(Boolean),
-    status: 'published',
-  });
-  res.json({ ok: true, id: m._id });
-});
-
 // ---------- admin ----------
 router.get('/admin', needAdmin, async (req, res) => {
-  const [orders, posts, mods, reviews] = await Promise.all([
+  const [orders, posts, reviews] = await Promise.all([
     Order.find({}).populate('user', 'username email').sort({ createdAt: -1 }).limit(100).lean(),
     Post.find({}).populate('author', 'username').sort({ createdAt: -1 }).limit(60).lean(),
-    Mod.find({}).populate('author', 'username').populate('game', 'title slug').sort({ updatedAt: -1 }).limit(60).lean(),
     Review.find({}).populate('user', 'username').populate('game', 'title slug').sort({ createdAt: -1 }).limit(60).lean(),
   ]);
-  res.json({ orders, posts, mods, reviews });
+  res.json({ orders, posts, reviews });
 });
 
 /* packing -> shipped -> delivered. The buyer's order page reads the same
@@ -1253,14 +1203,6 @@ router.delete('/admin/posts/:id', needAdmin, async (req, res) => {
   const p = await Post.findByIdAndDelete(req.params.id);
   if (!p) return res.status(404).json({ error: 'Post not found' });
   res.json({ ok: true });
-});
-
-router.post('/admin/mods/:id/visibility', needAdmin, async (req, res) => {
-  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Mod not found' });
-  const hidden = !!req.body.hidden;
-  const m = await Mod.findByIdAndUpdate(req.params.id, { $set: { status: hidden ? 'hidden' : 'published' } }, { new: true });
-  if (!m) return res.status(404).json({ error: 'Mod not found' });
-  res.json({ ok: true, status: m.status });
 });
 
 router.delete('/admin/reviews/:id', needAdmin, async (req, res) => {

@@ -2,7 +2,7 @@
    field lists, real indexes, real row counts. Nothing hand-written. */
 require('dotenv').config();
 const mongoose = require('mongoose');
-const models = ['User', 'Game', 'Toy', 'GameKey', 'Order', 'Review', 'Mod', 'Post'];
+const models = ['User', 'Game', 'Toy', 'GameKey', 'Order', 'Review', 'Post'];
 
 (async () => {
   await mongoose.connect(process.env.MONGO_URI);

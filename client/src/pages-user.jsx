@@ -552,155 +552,12 @@ export function PostDetail() {
     <form className="panel" onSubmit={reply} style={{ display: 'grid', gap: 8 }}><textarea name="text" placeholder="Reply…" required /><button className="ghost-btn">Reply</button></form></>);
 }
 
-const fmtN = (n) => (n || 0).toLocaleString('en-US');
-const fmtBytes = (b) => (!b ? 'not published' : b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : (b / 1048576).toFixed(1) + ' MB');
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
-
-/* A mirrored mod's figures come from Steam and must be attributed as such.
-   A locally uploaded mod has none of them and shows only PixelVault's own
-   counters — never a stand-in number. */
-function modAttribution(m) {
-  return m.source?.provider === 'steam-workshop'
-    ? { who: m.source.author || m.source.authorId, subs: m.mirror?.subscriptions, where: 'Steam Workshop' }
-    : { who: m.author?.username ? '@' + m.author.username : null, subs: null, where: null };
-}
-
-export function Mods() {
-  const [d, setD] = useState(null);
-  const [msg, setMsg] = useState('');
-  const [q, setQ] = useState(() => Object.fromEntries(new URLSearchParams(window.location.search)));
-  const [game, setGame] = useState('');
-
-  useEffect(() => {
-    setD(null);
-    const s = new URLSearchParams();
-    if (q.source) s.set('source', q.source);
-    if (q.sort) s.set('sort', q.sort);
-    if (game) s.set('game', game);
-    api('/mods?' + s.toString()).then(setD).catch(() => setD({ mods: [] }));
-  }, [q, game]);
-
-  const upload = async (e) => {
-    e.preventDefault();
-    const f = new FormData(e.target);
-    try {
-      await api('/mods/new', { method: 'POST', body: { game: f.get('game'), title: f.get('title'), description: f.get('description'), version: f.get('version'), downloadUrl: f.get('downloadUrl') } });
-      e.target.reset(); setD(await api('/mods')); setMsg('Mod published!');
-    } catch (er) { setMsg(er.message); }
-  };
-  if (!d) return <p className="muted">Loading…</p>;
-
-  const set = (k, v) => setQ((prev) => { const n = { ...prev }; v ? n[k] = v : delete n[k]; return n; });
-  const steamCount = (d.mods || []).filter((m) => m.source?.provider === 'steam-workshop').length;
-
-  return (<><h1>Workshop</h1>
-    <p className="tiny" style={{ maxWidth: '68ch' }}>
-      Mods mirrored from the Steam Workshop, with their statistics exactly as Steam reports them
-      and a link back to the original page. Nothing is hosted here — downloads happen on Steam.
-    </p>
-
-    <div className="chips" style={{ marginTop: 'var(--s4)' }}>
-      <button className={'chip' + (!q.source ? ' on' : '')} onClick={() => set('source', '')}>All sources</button>
-      <button className={'chip' + (q.source === 'steam' ? ' on' : '')} onClick={() => set('source', 'steam')}>Steam Workshop</button>
-      <button className={'chip' + (q.source === 'local' ? ' on' : '')} onClick={() => set('source', 'local')}>PixelVault uploads</button>
-    </div>
-    <div className="chips">
-      <span className="tiny" style={{ letterSpacing: '.1em', textTransform: 'uppercase' }}>Sort</span>
-      {[['subs', 'Most subscribed'], ['new', 'Recently updated'], ['size', 'Largest file']].map(([k, label]) =>
-        <button key={k} className={'chip' + ((q.sort || 'subs') === k ? ' on' : '')} onClick={() => set('sort', k === 'subs' ? '' : k)}>{label}</button>)}
-      <input className="chip" style={{ width: 200, paddingLeft: 10 }} placeholder="Filter by game id…" value={game} onChange={(e) => setGame(e.target.value)} />
-    </div>
-
-    {(d.mods || []).map((m) => {
-      const a = modAttribution(m);
-      const line = m.source?.provider === 'steam-workshop'
-        ? `${fmtN(a.subs)} subscribers · ${fmtBytes(m.mirror?.fileSize)} · ${a.where}`
-        : `PixelVault upload${a.who ? ' by ' + a.who : ''}`;
-      return (<Link key={m._id} className="thread" to={`/mods/${m._id}`}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-          {m.previewImage && <img src={m.previewImage} alt="" style={{ width: 52, height: 30, objectFit: 'cover', border: '1px solid var(--rule-soft)', flexShrink: 0 }} />}
-          <span style={{ minWidth: 0 }}>
-            <b style={{ display: 'block', color: 'var(--bright)', fontSize: 13.5 }}>{m.title}</b>
-            <span style={{ fontSize: 11.5 }}>{m.game?.title}{a.who ? ' · by ' + a.who : ''}</span>
-          </span>
-        </span>
-        <span className="num" style={{ fontSize: 11.5 }}>{line}</span>
-      </Link>);
-    })}
-    {!d.mods.length && <p className="muted">No mods match this filter.</p>}
-    {steamCount > 0 && <p className="tiny" style={{ marginTop: 'var(--s4)' }}>{fmtN(steamCount)} shown here are mirrored from Steam Workshop; the rest were uploaded to PixelVault.</p>}
-
-    <div className="panel"><h3>Upload a mod</h3>
-      <form onSubmit={upload} style={{ display: 'grid', gap: 8 }}>
-        <input name="game" placeholder="Game store slug (e.g. hollow-knight-...) — see URL" title="Game slug" required />
-        <input name="title" placeholder="Mod title *" required />
-        <div className="row">
-          <input name="version" placeholder="Version (optional — leave blank if there is none)" />
-          <input name="downloadUrl" placeholder="Download URL" />
-        </div>
-        <textarea name="description" placeholder="What does it do?" />
-        <button className="cta-btn sm">Publish mod</button>
-      </form>
-      {msg && <p className="tiny">{msg}</p>}
-    </div></>);
-}
-
-export function ModDetail() {
-  const { id } = useParams();
-  const [d, setD] = useState(null);
-  useEffect(() => { api('/mods/' + id).then(setD).catch(() => setD({ err: 1 })); }, [id]);
-  if (!d) return <p className="muted">Loading…</p>;
-  if (d.err) return <p className="err">Not found.</p>;
-
-  const m = d.mod;
-  const a = modAttribution(m);
-  const mirrored = m.source?.provider === 'steam-workshop';
-  const stats = mirrored
-    ? [['Subscribers', fmtN(m.mirror.subscriptions)], ['Favourites', fmtN(m.mirror.favorites)],
-       ['Views', fmtN(m.mirror.views)], ['Votes', fmtN(m.mirror.votes)],
-       ['Rating', m.mirror.rating ? m.mirror.rating + ' / 5' : 'no rating yet'],
-       ['Comments', fmtN(m.mirror.comments)], ['File size', fmtBytes(m.mirror.fileSize)],
-       ['Updated', fmtDate(m.mirror.updatedAt)]]
-    : null;
-
-  return (<>
-    {m.previewImage && <img src={m.previewImage} alt="" style={{ width: '100%', maxHeight: 340, objectFit: 'cover', border: '1px solid var(--rule)', marginBottom: 'var(--s4)' }} />}
-    <h1>{m.title}</h1>
-    <p className="tiny">
-      {m.game?.title && <>For <Link to={'/games/' + m.game.slug}>{m.game.title}</Link> · </>}
-      {a.who ? 'by ' + a.who + ' · ' : ''}{m.version ? 'v' + m.version : 'version not published'}
-    </p>
-
-    {mirrored && (
-      <div className="panel">
-        <h3>Source</h3>
-        <p className="tiny" style={{ maxWidth: '70ch' }}>
-          Mirrored from the Steam Workshop. The figures below are Steam&rsquo;s own counts for this
-          item, captured on {fmtDate(m.source.retrievedAt)} — PixelVault does not host or re-count
-          them. The mod is downloaded from Steam, not from here.
-        </p>
-        <div className="kpi-row" style={{ marginTop: 'var(--s3)' }}>
-          {stats.map(([k, v]) => <div className="kpi" key={k}><span>{k}</span><b className="num">{v}</b></div>)}
-        </div>
-        <p style={{ marginBottom: 0 }}>
-          <a className="cta-btn sm" href={m.source.url} target="_blank" rel="noopener noreferrer">Open on Steam Workshop</a>
-        </p>
-      </div>
-    )}
-
-    <div className="panel"><p>{m.description}</p>
-      {!mirrored && m.downloadUrl && <p><a href={m.downloadUrl}>Download</a></p>}
-      {(m.tags || []).length > 0 && <p className="row" style={{ marginBottom: 0 }}>{m.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</p>}
-    </div>
-  </>);
-}
-
 export function Admin() {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const [tab, setTab] = useState('orders');
   const toast = useToast();
-  const load = () => api('/admin').then((r) => { setD(r); setErr(''); }).catch((e) => { setErr(e.message); setD({ orders: [], posts: [], mods: [], reviews: [] }); });
+  const load = () => api('/admin').then((r) => { setD(r); setErr(''); }).catch((e) => { setErr(e.message); setD({ orders: [], posts: [], reviews: [] }); });
   useEffect(() => { load(); }, []);
   if (!d) return <p className="muted">Loading…</p>;
   const advance = async (o) => {
@@ -712,10 +569,6 @@ export function Admin() {
     try { await api('/admin/posts/' + p._id, { method: 'DELETE' }); toast('Post deleted'); load(); }
     catch (e) { toast(e.message, 'err'); }
   };
-  const toggleMod = async (m) => {
-    try { const r = await api('/admin/mods/' + m._id + '/visibility', { method: 'POST', body: { hidden: m.status !== 'hidden' } }); toast('Mod ' + r.status); load(); }
-    catch (e) { toast(e.message, 'err'); }
-  };
   const delReview = async (r) => {
     if (!window.confirm('Delete review "' + r.title + '"?')) return;
     try { await api('/admin/reviews/' + r._id, { method: 'DELETE' }); toast('Review deleted'); load(); }
@@ -725,7 +578,7 @@ export function Admin() {
   const paid = d.orders.filter((o) => ['paid', 'shipped', 'delivered'].includes(o.status));
   const revenue = paid.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
   const toShip = d.orders.filter((o) => o.shipment && ['packing', 'shipped'].includes(o.shipment.status)).length;
-  const tabs = [['orders', 'Orders (' + d.orders.length + ')'], ['posts', 'Posts (' + d.posts.length + ')'], ['mods', 'Mods (' + d.mods.length + ')'], ['reviews', 'Reviews (' + d.reviews.length + ')']];
+  const tabs = [['orders', 'Orders (' + d.orders.length + ')'], ['posts', 'Posts (' + d.posts.length + ')'], ['reviews', 'Reviews (' + d.reviews.length + ')']];
   return (<>
     <div className="sec-head" style={{ marginTop: 0 }}>
       <span className="ix">Admin</span>
@@ -781,21 +634,6 @@ export function Admin() {
         ))}</tbody>
       </table>
     ) : <p className="muted">No community posts.</p>)}
-
-    {tab === 'mods' && (d.mods.length ? (
-      <table className="ptable">
-        <thead><tr><th>Mod</th><th>Game</th><th>Author</th><th>Status</th><th /></tr></thead>
-        <tbody>{d.mods.map((m) => (
-          <tr key={m._id}>
-            <td><Link className="t-name" to={'/mods/' + m._id}>{m.title}</Link></td>
-            <td className="t-genre">{m.game?.title || '?'}</td>
-            <td className="t-genre">{m.author?.username ? '@' + m.author.username : (m.source?.author || 'Steam Workshop')}</td>
-            <td className="t-keys">{m.status}</td>
-            <td><button className="ghost-btn sm" onClick={() => toggleMod(m)}>{m.status === 'hidden' ? 'Unhide' : 'Hide'}</button></td>
-          </tr>
-        ))}</tbody>
-      </table>
-    ) : <p className="muted">No mods.</p>)}
 
     {tab === 'reviews' && (d.reviews.length ? (
       <table className="ptable">

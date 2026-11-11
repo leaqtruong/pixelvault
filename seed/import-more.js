@@ -121,7 +121,6 @@ function mapGame(appid, d, art, devId) {
     status: 'published',
     featured: false,
     releaseDate: d.release_date && d.release_date.date ? new Date(d.release_date.date) : undefined,
-    modSupport: true,
     steamAppId: appid,
     developer: devId,
   };

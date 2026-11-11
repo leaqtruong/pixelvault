@@ -15,7 +15,6 @@ const mongoose = require('mongoose');
   console.log('toys total           : ' + await r('toys'));
   console.log('gamekeys             : ' + await r('gamekeys') + '  available: ' + await r('gamekeys', { status: 'available' }));
   console.log('reviews              : ' + await r('reviews'));
-  console.log('mods (steam-sourced) : ' + await r('mods', { 'source.provider': 'steam-workshop' }));
   console.log('users                : ' + await r('users') + '  roles: ' + (await db.collection('users').distinct('role')).join(','));
   console.log('posts                : ' + await r('posts'));
   console.log('orders               : ' + await r('orders'));

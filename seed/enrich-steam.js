@@ -13,7 +13,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const KEEP_CATEGORIES = new Set([
   'Single-player', 'Multi-player', 'Co-op', 'Online Co-op', 'Shared/Split Screen Co-op',
   'Shared/Split Screen', 'PvP', 'Online PvP', 'Massively Multiplayer', 'Battle Royale',
-  'Steam Achievements', 'Full controller support', 'Steam Cloud', 'Steam Workshop',
+  'Steam Achievements', 'Full controller support', 'Steam Cloud',
   'Family Sharing', 'Partial Controller Support', 'Includes level editor',
   'In-App Purchases', 'Steam Deck Compatible', 'VR Supported', 'Remote Play on TV',
 ]);

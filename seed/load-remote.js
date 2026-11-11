@@ -60,16 +60,14 @@ const done = async (code) => { try { await mongoose.disconnect(); } catch {} cle
   const steps = [
     ['seed/import-steam.js', 'catalog game + keys + users'],
     ['seed/enrich-steam.js', 'system requirements, publishers, Steam categories'],
-    ['seed/import-workshop.js', 'mods from the Steam Workshop, with source recorded'],
     ['seed/upgrade-covers.js', 'highest resolution cover art'],
     ['seed/seed-toys.js', 'toy catalog'],
     ['seed/seed-reviews.js', 'reviews'],
   ];
   for (const [file, what] of steps) {
-    const args = file.includes('import-workshop') ? ['--apply', '--pages', '2'] : [];
     console.log('\n=== ' + file + ' — ' + what + ' ===');
     try {
-      const out = execFileSync('node', [file, ...args], { encoding: 'utf8', timeout: 900000 });
+      const out = execFileSync('node', [file], { encoding: 'utf8', timeout: 900000 });
       process.stdout.write(out.split('\n').slice(-6).join('\n'));
     } catch (e) {
       console.log('  step failed: ' + String(e.message).slice(0, 200));

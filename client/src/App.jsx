@@ -34,8 +34,6 @@ const DevSales = laz(users, 'DevSales');
 const Community = laz(users, 'Community');
 const CommunityNew = laz(users, 'CommunityNew');
 const PostDetail = laz(users, 'PostDetail');
-const Mods = laz(users, 'Mods');
-const ModDetail = laz(users, 'ModDetail');
 const Settings = laz(users, 'Settings');
 const Support = laz(users, 'Support');
 const Admin = laz(users, 'Admin');
@@ -155,8 +153,6 @@ export default function App() {
           <Route path="/community" element={<Community />} />
           <Route path="/community/new" element={<CommunityNew />} />
           <Route path="/community/p/:id" element={<PostDetail />} />
-          <Route path="/mods" element={<Mods />} />
-          <Route path="/mods/:id" element={<ModDetail />} />
           <Route path="/settings" element={<Settings me={me} onMe={setMe} theme={theme} onTheme={(t) => setTheme(t)} />} />
           <Route path="/support" element={<Support />} />
           <Route path="*" element={<p className="muted">404 — vault corridor not found. <a href="/">Back home</a></p>} />

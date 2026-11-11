@@ -66,7 +66,6 @@ const gameSchema = new mongoose.Schema({
   status: { type: String, enum: ['draft', 'pending', 'published', 'rejected', 'delisted'], default: 'pending', index: true },
   featured: { type: Boolean, default: false },
   releaseDate: { type: Date, default: Date.now },
-  modSupport: { type: Boolean, default: true },
   stats: {
     views: { type: Number, default: 0 },
     unitsDigital: { type: Number, default: 0 },

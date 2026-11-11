@@ -261,7 +261,6 @@ export function Store() {
             <Link className={q.sort === 'rating' ? 'on' : ''} to="/games?sort=rating">Top rated</Link>
             <Link className={q.sort === 'priceAsc' ? 'on' : ''} to="/games?sort=priceAsc">Price, low first</Link>
             <Link className={q.onSale ? 'on' : ''} to="/games?onSale=1">Special offers</Link>
-            <Link className={q.moddable ? 'on' : ''} to="/games?moddable=1">Moddable</Link>
           </div>
         </aside>
         <div>
@@ -320,7 +319,7 @@ export function GameDetail({ me }) {
   const nav = useNavigate();
   if (err) return <p className="err">{err}</p>;
   if (!d) return <p className="muted">Loading…</p>;
-  const { game, reviews, mods, threads } = d;
+  const { game, reviews, threads } = d;
   // No stock figure exists any more: the key is obtained from the supplier when
   // the order is fulfilled, so a priced listing is always buyable.
   const outOfKeys = false;
@@ -467,19 +466,6 @@ export function GameDetail({ me }) {
               ))}
             </div>
           )}
-
-          {(mods || []).length ? (
-            <div className="doc">
-              <h3>Mods ({mods.length})</h3>
-              {mods.slice(0, 4).map((m) => (
-                <Link className="thread" key={m._id} to={`/mods/${m._id}`}>
-                  <span style={{ color: 'var(--bright)', fontSize: 13, whiteSpace: 'normal' }}>{m.title}</span>
-                  <span>{m.downloads || 0} downloads</span>
-                </Link>
-              ))}
-              <Link className="ghost-btn sm" style={{ marginTop: 10 }} to="/mods">All mods</Link>
-            </div>
-          ) : null}
 
           <div className="doc">
             <h3>Customer reviews ({reviews.length})</h3>

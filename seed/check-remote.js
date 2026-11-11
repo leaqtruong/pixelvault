@@ -5,7 +5,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 
-const EXPECTED = ['users', 'games', 'toys', 'gamekeys', 'orders', 'reviews', 'mods', 'posts'];
+const EXPECTED = ['users', 'games', 'toys', 'gamekeys', 'orders', 'reviews', 'posts'];
 
 const watchdog = setTimeout(() => { console.error('timed out'); process.exit(2); }, 60000);
 watchdog.unref();

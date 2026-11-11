@@ -44,5 +44,5 @@ handshake and signs itself in.
 - Order history and library (owned games + wishlist).
 - QR login scanner.
 
-The web-only tools (developer console, admin desk, forums, mods) are not yet in
+The web-only tools (developer console, admin desk, forums) are not yet in
 this first mobile pass; they remain available on the website.

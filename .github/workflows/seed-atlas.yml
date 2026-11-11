@@ -17,11 +17,6 @@ name: Seed the Atlas database
 
 on:
   workflow_dispatch:
-    inputs:
-      pages:
-        description: 'Workshop pages to mirror per game (30 mods each)'
-        required: false
-        default: '2'
 
 permissions:
   contents: read
@@ -71,9 +66,6 @@ jobs:
 
       - name: Add real system requirements and Steam metadata
         run: node seed/enrich-steam.js
-
-      - name: Mirror mods from the Steam Workshop
-        run: node seed/import-workshop.js --apply --pages ${{ github.event.inputs.pages || '2' }}
 
       - name: Upgrade cover art to the highest resolution available
         run: node seed/upgrade-covers.js

@@ -180,7 +180,6 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
             <Link className={on('/games')} to="/games">Store</Link>
             <Link className={on('/toys')} to="/toys">Toys</Link>
             <Link className={on('/community')} to="/community">Community</Link>
-            <Link className={on('/mods')} to="/mods">Mods</Link>
             <Link className={on('/dev')} to="/dev">Dev Portal</Link>
             {me?.role === 'admin' && <Link className={on('/admin')} to="/admin">Admin</Link>}
             <span className="rule-v" />

@@ -1,6 +1,6 @@
 # ◈ PixelVault — Game Store (React + Express + MongoDB)
 
-ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + toy collectibles, dev portal with revenue, mod hub, community forums, library with playtime + keys, reviews, wishlist, shipping tracking, light/dark themes, editable profiles with address book.
+ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + toy collectibles, dev portal with revenue, community forums, library with playtime + keys, reviews, wishlist, shipping tracking, light/dark themes, editable profiles with address book.
 
 Steam data (title, capsule art, genres, price, platforms, release date) comes from the Steam Store API. Live player counts and community review verdicts come from public Steam Web APIs (`lib/steamLive.js`, 10-min cache).
 
@@ -19,14 +19,13 @@ Steam data (title, capsule art, genres, price, platforms, release date) comes fr
 | Cover and hero art | Steam CDN, largest asset that exists for that appid |
 | Feature categories | Steam `categories`, filtered to the ones a buyer filters on |
 | Player counts, review verdicts, news | Steam Web API, cached 10 minutes |
-| Mod titles, descriptions, tags, file sizes, subscriber/favourite/view/vote counts, star ratings, author names | Steam Workshop (`steamcommunity.com/workshop/browse/`), mirrored by `seed/import-workshop.js` |
 | Ledger counts, stock, order totals, revenue | Counted from MongoDB on request |
 | Shipping cost | **Sample rates** from `.env` — labelled as such on the checkout screen, not a carrier tariff |
 | Tax rate | `TAX_RATE` from `.env` |
 
 Where Steam publishes nothing, the field stays unset and the UI says so rather than showing a plausible-looking placeholder. Install size, version string and ESRB rating are not available from the API, so they are never invented — a fabricated rating would also silently defeat the "hide mature titles" preference, which reads that field.
 
-**Store filters** are built from what the catalog actually contains: genres, Steam feature categories (Single-player, Co-op, Steam Achievements, Steam Workshop, VR Supported…), platforms, price bands and five sort orders.
+**Store filters** are built from what the catalog actually contains: genres, Steam feature categories (Single-player, Co-op, Steam Achievements, VR Supported…), platforms, price bands and five sort orders.
 
 UI: React SPA. Design tokens and the three layout families live at the top of `client/src/index.css`.
 
@@ -46,8 +45,8 @@ Figures shown in the hero ledger are counted from MongoDB on each `/api/home` re
 |---|---|
 | `client/` | ReactJS SPA (Vite). `npm run dev --prefix client` for hot-reload (proxies `/api` to :3000), `npm run build --prefix client` for production |
 | `server.js` | Express: serves `/api/*` JSON + `client/dist` static with SPA fallback |
-| `routes/api.js` | All JSON endpoints (auth, games, toys, cart, checkout, orders, library, dev, reviews, users, community, mods) |
-| `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Mod`, `Post`, `Review` |
+| `routes/api.js` | All JSON endpoints (auth, games, toys, cart, checkout, orders, library, dev, reviews, users, community) |
+| `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Post`, `Review` |
 | `seed/` | `import-steam.js` (full reseed of the baseline catalog), `import-more.js` (adds missing appids, `--rebuild` restores a wiped catalog), `enrich-steam.js` (real system requirements, publishers, languages, Steam categories), `upgrade-covers.js` (high-res art pass), `strip-invented-data.js` (clears placeholder fields written by older imports), `check-db-health.js` (15-point database health check: connection, collections, indexes, API-versus-database agreement, write-and-read-back), `steamArt.js` / `steamReq.js` / `seed-reviews.js` / `seed-toys.js` / `block-titles.js` / `prune-catalog.js` / `find-mongo.js` (mongod discovery) / `check-db.js` (catalog verification) / `rotate-key-secret.js` (secret migration) / `reset-demo.js`, `clear-orders.js` |
 
 `npm run seed` chains the real importers. There is no longer a seeder that fabricates a fictional catalog — an earlier `seed/seed.js` invented titles, prices and install sizes and was wired to that script; it was removed rather than kept as a trap.
@@ -145,7 +144,6 @@ It decrypts every row with the old secret, verifies a round trip, aborts without
 
 ```
 $env:MONGO_URI='mongodb+srv://...'; node seed/import-steam.js
-$env:MONGO_URI='mongodb+srv://...'; node seed/import-workshop.js --apply
 ```
 
 Render's servers can reach Steam, unlike some networks where it is blocked.
@@ -167,14 +165,13 @@ Google login (optional): create an OAuth 2.0 Client ID at `console.cloud.google.
 |---|---|
 | `/api/home` | featured, deals, fresh, toys, category tiles, threads |
 | `/api/auth` | register, login, logout, me (session + bcrypt) |
-| `/api/games` | Steam-style store: q, genre, tag, platform, feature, sort, maxPrice, onSale, moddable + pager, detail + `keysAvailable`, wishlist |
+| `/api/games` | Steam-style store: q, genre, tag, platform, feature, sort, maxPrice, onSale + pager, detail + `keysAvailable`, wishlist |
 | `/api/toys` | Separate merch storefront (own collection): q, category, brand, sort + pager, detail + related game, wishlist |
 | `/api/cart` | add / qty / remove, mixed digital games + boxed games + toys (`kind` split) |
 | `/api/checkout` + `/api/orders` | quote, atomic place order (GameKey.claimOne + stock guards), tax+shipping math, tracking `PV-XXX`, advance scan, order detail shows decrypted demo keys |
 | `/api/library` | owned games, play +30min, achievements, delivered keys with copy button, toy library + both wishlists (Games / Collectibles / Wishlist tabs), `/api/recommendations` by genre |
 | `/api/dev` | apply, dashboard (gross, 70% cut, monthly, by-country, low-key/low-box alerts), new game, edit game, payout, `/:id/keys` vault (counts, masked list, CSV import, demo generate, revoke), toy shelf restock + price edit |
 | `/api/dev/sales` | report view + CSV download of monthly revenue (React page at `/dev/sales`) |
-| `/api/mods` | browse, upload by store slug, detail |
 | `/api/community` | boards, post detail, new post, replies |
 | `/api/reviews` | own-to-review, helpful votes, dev response |
 | `/api/users/:username` | profile, library preview, own orders |
@@ -209,43 +206,4 @@ Demo keys are fake `DEMO-XXXXX-XXXXX-XXXXX` placeholders encrypted with AES-256-
 - Tax 8%. Tracking `PV-<base36><rand>`. Status flow: packing → shipped → in_transit → out_for_delivery → delivered.
 - Dev cut 70% credited to `devProfile.balanceOwed` per order item; payout resets at $10 min.
 
-## Mods: mirrored from the Steam Workshop, with the source recorded
-
-The Workshop page is not fiction and nothing here was written by hand. Mods are mirrored from Valve's public Steam Workshop, and **every row records where it came from and when**:
-
-| Field | Meaning | Source |
-|---|---|---|
-| `source.provider` | `steam-workshop` (absent for PixelVault uploads) | — |
-| `source.id` | the Workshop `publishedfileid` | Steam |
-| `source.url` | `https://steamcommunity.com/sharedfiles/filedetails/?id=…` | constructed from the id |
-| `source.author` | the author's public Steam name | breadcrumb on the item's own page |
-| `source.authorId` | `steamid64`, exactly as Steam reports it | Steam |
-| `source.gameUrl` | the Workshop page of the parent game | constructed from the game's appid |
-| `source.retrievedAt` | when this row was mirrored | this importer |
-| `mirror.subscriptions` / `favorites` / `views` / `votes` / `rating` / `comments` | Steam's own counts | Steam |
-| `mirror.fileSize` | bytes, as Steam reports it | Steam |
-| `mirror.createdAt` / `updatedAt` | Steam's timestamps | Steam |
-
-`version` is deliberately **unset** for mirrored mods — Steam publishes no version string for a Workshop item, and a made-up `1.0.0` would look like a real fact. The detail page says so instead. PixelVault does not host any mod files; the download button links back to Steam.
-
-Only the 21 catalog titles that actually publish Workshop content are eligible. The other 53 have none, and the importer records that rather than inventing entries — Terraria alone publishes 150,859 items, Garry's Mod 1,991,172.
-
-```
-node seed/import-workshop.js                  dry run, browse phase only
-node seed/import-workshop.js --apply          write mods to MongoDB
-node seed/import-workshop.js --apply --pages 3
-node seed/import-workshop.js --apply --authors --limit 200
-node seed/workshop-status.js                  what has been mirrored so far
-```
-
-`--apply` upserts on the Workshop item id, so running it repeatedly only adds what is missing and refreshes the Steam counts on rows it already has. Author names are never overwritten once resolved.
-
-Importing is split into two phases on purpose. Steam answers `HTTP 429` under load, so the browse phase makes only a handful of requests, and the author-name lookup runs separately at a slower pace and skips rows that already have a name — interrupt it and re-run, and it continues where it stopped. A unique index on `('source.provider', 'source.id')` makes re-imports idempotent.
-
-The importer never reports a game it could not reach as a game with no Workshop. A throttled request, an unreachable host and a genuine absence are three different outcomes, and collapsing them would quietly shrink the catalog while reporting success. Failures are listed by name so a re-run can pick them up.
-
-**Networking note.** On some networks every Steam hostname resolves to `127.0.0.1` (seen on a machine in Vietnam using `8.8.8.8`, while GitHub, npm and the Nexus API resolve normally), and on others the TLS connection to Steam's real addresses is reset outright. `lib/steamFetch.js` handles the first case: when plain `fetch` fails for a Steam host, it resolves the hostname over DNS-over-HTTPS and connects straight to the returned address, keeping the original `Host` header and TLS SNI. It tries ordinary `fetch` first on purpose — the workaround only engages when the normal path fails. If Steam is blocked at the TCP/TLS layer as well, no client-side change helps; the importer reports `unreachable (ECONNRESET…)` and the affected games, and re-running later resumes exactly where it stopped.
-
-Other sources were evaluated and rejected: the Nexus Mods API answers `401` and its site `403` without credentials, and CurseForge's API returns `403: API Key missing or invalid`. Steam's own `ISteamRemoteStorage/GetPublishedFileDetails` needs an API key to be useful. The Workshop browse page is public, needs no key, and ships the data as server-rendered JSON.
-
-`users` (game library + toyLibrary, wishlists, addresses, playHistory), `games` (genres/tags/platforms/features Steam-style + digital + physical subdoc, stats.keysAvailable), `toys` (standalone merch: brand, category, price, stock), `gamekeys` (codeEnc AES-256-GCM, codeHash unique, status, order, user), `orders` (items.kind game/toy, keyIds, shipment, devPayouts), `mods` (`source` provenance + `mirror` Steam figures for Workshop entries), `posts` (replies embedded), `reviews`.
+`users` (game library + toyLibrary, wishlists, addresses, playHistory), `games` (genres/tags/platforms/features Steam-style + digital + physical subdoc, stats.keysAvailable), `toys` (standalone merch: brand, category, price, stock), `gamekeys` (codeEnc AES-256-GCM, codeHash unique, status, order, user), `orders` (items.kind game/toy, keyIds, shipment, devPayouts), `posts` (replies embedded), `reviews`.
