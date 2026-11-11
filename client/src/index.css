@@ -415,6 +415,17 @@ a.tag:hover{border-color:var(--rule-accent);color:var(--accent)}
   letter-spacing:.1em;text-transform:uppercase}
 .req_key{color:var(--faint);font-weight:600;margin-right:5px}
 
+/* language support — interface / full audio / subtitles, like Steam */
+.lang_tbl{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed;margin-top:10px}
+.lang_tbl th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);padding:0 10px 8px 0;border-bottom:1px solid var(--rule);white-space:nowrap}
+.lang_tbl th:not(:first-child),.lang_tbl td:not(:first-child){width:96px;text-align:center}
+.lang_tbl td{padding:8px 10px 8px 0;border-bottom:1px solid var(--rule-soft);color:var(--ink)}
+.lang_tbl td.ok{color:var(--accent);font-weight:700}
+.lang_more{margin-top:10px;padding:0;border:0;background:none;color:var(--accent);
+  font-family:inherit;font-size:12px;cursor:pointer}
+.lang_more:hover{text-decoration:underline}
+
 .panel{background:var(--card);border:1px solid var(--rule);padding:var(--s4) var(--s5);margin:var(--s4) 0}
 .panel>h3:first-child{margin-top:0}
 .row{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center}

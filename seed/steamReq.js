@@ -66,4 +66,24 @@ function summarise(fields, fallback = '') {
   return uniq.length ? uniq.join(' · ') : fallback;
 }
 
-module.exports = { reqLines, reqFields, summarise, decode };
+/* Steam's supported_languages is an HTML fragment:
+     English<strong>*</strong>, French, ...<br><strong>*</strong>languages with full audio support
+   The asterisk marks a full-audio language; everything before the <br> is the
+   language list. Return [{ name, audio }] so the detail page can render the
+   Interface / Full Audio / Subtitles table. */
+function parseLanguages(html) {
+  if (!html) return [];
+  const listPart = String(html).split(/<br\s*\/?>/i)[0];
+  const out = [];
+  for (const chunk of listPart.split(',')) {
+    const audio = /<(?:strong|b)[^>]*>\s*\*\s*<\/(?:strong|b)>/i.test(chunk);
+    const name = decode(chunk.replace(/<[^>]*>/g, ''))
+      .replace(/\s+/g, ' ')
+      .replace(/\s*\*+\s*$/, '')
+      .trim();
+    if (name) out.push({ name, audio });
+  }
+  return out;
+}
+
+module.exports = { reqLines, reqFields, summarise, decode, parseLanguages };

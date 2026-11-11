@@ -300,6 +300,7 @@ export function GameDetail({ me }) {
   const [votes, setVotes] = useState({});
   const [err, setErr] = useState('');
   const [shot, setShot] = useState(0);
+  const [allLangs, setAllLangs] = useState(false);
   const toast = useToast();
   useEffect(() => { api('/games/' + slug).then(setD).catch((e) => setErr(e.message)); }, [slug]);
   useEffect(() => {
@@ -470,13 +471,38 @@ export function GameDetail({ me }) {
             <div>
               <h5 style={{ marginTop: 0 }}>Release</h5>
               <p className="tiny">{game.releaseDate ? new Date(game.releaseDate).toLocaleDateString() : '—'}</p>
-              {game.languages ? <p className="tiny">Interface languages: {game.languages}</p> : null}
               {!!(game.contentWarnings || []).length && (
                 <p className="tiny">Content: {(game.contentWarnings || []).join(' · ')}</p>
               )}
               {(game.categories || []).includes('Steam Achievements') && <p className="tiny">Steam Achievements included</p>}
             </div>
           </div>
+
+          {!!(game.languageList || []).length && (
+            <div className="doc">
+              <h3>Languages</h3>
+              <table className="lang_tbl">
+                <thead>
+                  <tr><th>Language</th><th>Interface</th><th>Full Audio</th><th>Subtitles</th></tr>
+                </thead>
+                <tbody>
+                  {(allLangs ? game.languageList : game.languageList.slice(0, 5)).map((l) => (
+                    <tr key={l.name}>
+                      <td>{l.name}</td>
+                      <td className="ok">✓</td>
+                      <td className={l.audio ? 'ok' : 'no'}>{l.audio ? '✓' : ''}</td>
+                      <td className="ok">✓</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {game.languageList.length > 5 && (
+                <button className="lang_more" onClick={() => setAllLangs(!allLangs)}>
+                  {allLangs ? 'Show fewer' : `See all ${game.languageList.length} supported languages`}
+                </button>
+              )}
+            </div>
+          )}
 
           {!!(game.categories || game.features || []).length && (
             <div className="doc">

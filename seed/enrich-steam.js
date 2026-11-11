@@ -4,7 +4,7 @@
    Safe to re-run; it only overwrites fields it parsed from the API. */
 require('dotenv').config();
 const mongoose = require('mongoose');
-const { reqLines, reqFields, summarise } = require('./steamReq');
+const { reqLines, reqFields, summarise, parseLanguages } = require('./steamReq');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -90,6 +90,7 @@ function platformKey(k) {
       .map((x) => (typeof x === 'string' ? x.trim() : ''))
       .filter(Boolean);
     const publishers = (d.publishers || []).join(', ');
+    const langs = parseLanguages(d.supported_languages);
 
     const hasReq = Object.keys(minimum).length > 0;
     if (hasReq) enriched++; else missing++;
@@ -98,7 +99,8 @@ function platformKey(k) {
       const set = {
         genres, categories: cats, features: cats,
         publisher: publishers,
-        languages: (d.supported_languages || []).length,
+        languages: langs.length,
+        languageList: langs,
         contentWarnings: content,
         deckVerified: (d.categories || []).some((c) => /Steam Deck/i.test(c.description))
           ? (d.categories.find((c) => /Steam Deck/i.test(c.description)).description.includes('Verified') ? 'Verified' : 'Compatible')

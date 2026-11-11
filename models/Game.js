@@ -62,6 +62,10 @@ const gameSchema = new mongoose.Schema({
   },
   publisher: { type: String, default: '' },
   languages: { type: Number, default: 0 },
+  // [{ name: 'English', audio: true }, ...] mirrored from Steam's
+  // supported_languages HTML, so the detail page can show the interface /
+  // full-audio / subtitles table.
+  languageList: [{ _id: false, name: String, audio: Boolean }],
   contentWarnings: { type: [String], default: [] },
   categories: { type: [String], default: [] },
   deckVerified: { type: String, default: '' },
