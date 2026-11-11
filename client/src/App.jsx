@@ -1,11 +1,44 @@
-import { useEffect, useState, Component } from 'react';
+import { useEffect, useState, Component, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { api, waitForDb } from './api.js';
 import { Layout, ToastHost } from './components.jsx';
 import { BUILD } from './version.js';
-import { Home, Store, GameDetail, Toys, ToyDetail } from './pages-shop.jsx';
-import { Cart, Checkout, Orders, OrderDetail, Library, Recommendations, PaymentReturn } from './pages-trade.jsx';
-import { Login, Register, Profile, DevApply, Dev, DevNew, DevKeys, DevToys, DevSales, Community, CommunityNew, PostDetail, Mods, ModDetail, Settings, Support, Admin } from './pages-user.jsx';
+
+// Route-level code splitting: each page family is its own chunk, loaded the
+// first time a route inside it is visited instead of at boot.
+const laz = (load, name) => lazy(() => load().then((m) => ({ default: m[name] })));
+const shop = () => import('./pages-shop.jsx');
+const trade = () => import('./pages-trade.jsx');
+const users = () => import('./pages-user.jsx');
+const Home = laz(shop, 'Home');
+const Store = laz(shop, 'Store');
+const GameDetail = laz(shop, 'GameDetail');
+const Toys = laz(shop, 'Toys');
+const ToyDetail = laz(shop, 'ToyDetail');
+const Cart = laz(trade, 'Cart');
+const Checkout = laz(trade, 'Checkout');
+const Orders = laz(trade, 'Orders');
+const OrderDetail = laz(trade, 'OrderDetail');
+const Library = laz(trade, 'Library');
+const Recommendations = laz(trade, 'Recommendations');
+const PaymentReturn = laz(trade, 'PaymentReturn');
+const Login = laz(users, 'Login');
+const Register = laz(users, 'Register');
+const Profile = laz(users, 'Profile');
+const DevApply = laz(users, 'DevApply');
+const Dev = laz(users, 'Dev');
+const DevNew = laz(users, 'DevNew');
+const DevKeys = laz(users, 'DevKeys');
+const DevToys = laz(users, 'DevToys');
+const DevSales = laz(users, 'DevSales');
+const Community = laz(users, 'Community');
+const CommunityNew = laz(users, 'CommunityNew');
+const PostDetail = laz(users, 'PostDetail');
+const Mods = laz(users, 'Mods');
+const ModDetail = laz(users, 'ModDetail');
+const Settings = laz(users, 'Settings');
+const Support = laz(users, 'Support');
+const Admin = laz(users, 'Admin');
 
 /* A single missing or unexpected field used to unmount the whole tree and
    leave a black page with no clue why. Catch it here and say what happened. */
@@ -95,6 +128,7 @@ export default function App() {
       </div>
       <Layout me={me} onLogout={() => setMe(null)} theme={theme} onTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}>
         <ToastHost>
+        <Suspense fallback={<div className="boot"><p className="tiny">Loading…</p></div>}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/games" element={<Store />} />
@@ -127,6 +161,7 @@ export default function App() {
           <Route path="/support" element={<Support />} />
           <Route path="*" element={<p className="muted">404 — vault corridor not found. <a href="/">Back home</a></p>} />
         </Routes>
+        </Suspense>
         </ToastHost>
       </Layout>
     </BrowserRouter>

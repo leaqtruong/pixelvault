@@ -17,6 +17,7 @@ const { issueKeys, supplierConfigured } = require('../lib/keyProvider');
 const gateway = require('../lib/paymentGateway');
 const steamPrice = require('../lib/steamPrice');
 const loginLimiter = require('../lib/loginLimiter');
+const cache = require('../lib/cache');
 
 const router = express.Router();
 
@@ -79,6 +80,15 @@ router.use((req, res, next) => {
     readyState: state,
     hint: 'MongoDB is still starting. start-website.bat waits for it automatically.',
   });
+});
+
+// Public, session-independent GETs get a short TTL cache. Anything that reads
+// the signed-in user (library, cart, orders, recommendations, games-with-
+// mature-filter) is deliberately excluded.
+const CACHEABLE = new Set(['/home', '/stats', '/toys', '/community', '/mods']);
+router.use((req, res, next) => {
+  if (req.method === 'GET' && CACHEABLE.has(req.path)) return cache(30)(req, res, next);
+  next();
 });
 
 const needLogin = (req, res, next) => {
