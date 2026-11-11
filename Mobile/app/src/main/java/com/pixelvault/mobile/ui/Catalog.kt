@@ -196,14 +196,21 @@ fun CheckoutScreen(onBack: () -> Unit, onDone: () -> Unit) {
         Text("Checkout", style = MaterialTheme.typography.headlineSmall)
         TextButton(onClick = onBack) { Text("Back") }
         if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error)
+        val needsShipping = summary?.items?.any { it.edition == "physical" || it.kind == "toy" } == true
         summary?.let {
             Text("Total: ${money(it.grand)}", style = MaterialTheme.typography.titleLarge)
-            Text("Subtotal ${money(it.subtotal)} · Tax ${money(it.tax)} · Shipping ${money(it.shipCost)}", style = MaterialTheme.typography.bodySmall)
+            if (needsShipping) {
+                Text("Subtotal ${money(it.subtotal)} · Tax ${money(it.tax)} · Shipping ${money(it.shipCost)}", style = MaterialTheme.typography.bodySmall)
+            } else {
+                Text("Subtotal ${money(it.subtotal)} · Tax ${money(it.tax)} · Digital delivery", style = MaterialTheme.typography.bodySmall)
+            }
         }
-        OutlinedTextField(fullName, { fullName = it }, label = { Text("Full name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(street, { street = it }, label = { Text("Street") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(city, { city = it }, label = { Text("City") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(country, { country = it }, label = { Text("Country") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        if (needsShipping) {
+            OutlinedTextField(fullName, { fullName = it }, label = { Text("Full name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(street, { street = it }, label = { Text("Street") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(city, { city = it }, label = { Text("City") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(country, { country = it }, label = { Text("Country") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        }
 
         Button(onClick = {
             busy = true
@@ -224,7 +231,7 @@ fun CheckoutScreen(onBack: () -> Unit, onDone: () -> Unit) {
                 }.onFailure { error = it.message }
                 busy = false
             }
-        }, enabled = !busy && fullName.isNotBlank() && street.isNotBlank() && city.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+        }, enabled = !busy && (!needsShipping || (fullName.isNotBlank() && street.isNotBlank() && city.isNotBlank())), modifier = Modifier.fillMaxWidth()) {
             Text("Place order")
         }
     }
