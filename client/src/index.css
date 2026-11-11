@@ -179,6 +179,9 @@ code{font-family:var(--font-mono);background:var(--card-2);border:1px solid var(
   cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;
   font-size:17px;padding:0;transition:color .14s,background .14s}
 .side-edge:hover{color:var(--accent);background:var(--card-hi)}
+/* Collapsed: the toggle shrinks to a small tab instead of becoming a
+   full-height strip down the empty rail. */
+.shell.no-side .side-edge{height:46px;align-self:flex-start;border-left-width:1px;margin-top:1px}
 
 /* rail sections: hairline rows, not brown boxes */
 .rail-sec{padding:var(--s4) 0;border-bottom:1px solid var(--rule-soft)}
