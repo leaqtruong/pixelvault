@@ -15,7 +15,6 @@ const crypto = require('crypto');
 const { decryptKey } = require('../lib/keyCrypto');
 const { issueKeys, supplierConfigured } = require('../lib/keyProvider');
 const gateway = require('../lib/paymentGateway');
-const steamPrice = require('../lib/steamPrice');
 const loginLimiter = require('../lib/loginLimiter');
 const cache = require('../lib/cache');
 const { getBucket } = require('../lib/gridfs');
@@ -684,8 +683,8 @@ router.post('/checkout/place', needLogin, async (req, res) => {
      library keeps one entry, while the money leaves twice and a spare key is
      issued. Refuse before the order exists and drop the duplicate from the
      basket so the retry can go through with the rest of the cart. Checked
-     before the Steam lookup: there is no point pricing a game that cannot be
-     bought. */
+     before the catalog lookup: there is no point pricing a game that cannot
+     be bought. */
   const ownedIds = new Set(
     ((await User.findById(req.session.user._id).select('library').lean())?.library || []).map((e) => String(e.game)),
   );
@@ -702,43 +701,44 @@ router.post('/checkout/place', needLogin, async (req, res) => {
     });
   }
 
-  /* Prices in the cart were copied from the catalog, which mirrors Steam as it
-     was on the day it was imported. Confirm them against the live store before
-     creating the order: charging a figure the store no longer offers is wrong
-     in both directions — the shopper overpays when a sale has ended, the shop
-     underpays when one has started.
-     A drift is refused rather than silently adopted, and the cart is rewritten
-     with the real prices so the retry the shopper is about to make is priced
-     correctly. Steam being unreachable is not a drift: see lib/steamPrice.js. */
-  const digitalIds = [...new Set(items
-    .filter((i) => (i.kind || 'game') !== 'toy' && (i.edition || 'digital') === 'digital')
-    .map((i) => String(i.gameId)))].filter(isObjectId);
-  if (digitalIds.length) {
-    const priced = await Game.find({ _id: { $in: digitalIds } }).select('title steamAppId').lean();
-    const byId = new Map(priced.map((g) => [String(g._id), g]));
-    const check = await steamPrice.verify(items, byId);
-    if (check.changes.length || check.unavailable.length) {
-      /* Steam is the source of truth for a mirrored catalogue, so the stale row
-         is corrected rather than only refused. The effective price is stored
-         with no percentage: keeping Steam's initial price plus its discount
-         percentage would re-derive a figure that can sit one cent away from the
-         quote and make every retry fail forever. */
-      for (const c of check.changes) {
-        await Game.updateOne({ _id: c.gameId }, { $set: { price: c.now, discountPct: 0 } });
-        const it = items.find((i) => i.key === c.key);
-        if (it) it.unitPrice = c.now;
+  /* Prices are local now: re-read the catalog and refuse a stale cart so the
+     shopper reviews the current total instead of being charged an old one. */
+  const gameIds = [...new Set(items.filter((i) => (i.kind || 'game') !== 'toy').map((i) => String(i.gameId)))].filter(isObjectId);
+  const toyIds = [...new Set(items.filter((i) => (i.kind || 'game') === 'toy').map((i) => String(i.toyId)))].filter(isObjectId);
+  const [priced, pricedToys] = await Promise.all([
+    gameIds.length ? Game.find({ _id: { $in: gameIds } }).select('title price discountPct physical').lean() : [],
+    toyIds.length ? Toy.find({ _id: { $in: toyIds } }).select('title price').lean() : [],
+  ]);
+  const gameById = new Map(priced.map((g) => [String(g._id), g]));
+  const toyById = new Map(pricedToys.map((t) => [String(t._id), t]));
+  const changes = [];
+  for (const i of items) {
+    if ((i.kind || 'game') === 'toy') {
+      const t = toyById.get(String(i.toyId));
+      if (!t) return res.status(409).json({ error: `${i.title} is no longer available.`, code: 'game_unavailable' });
+      if (Math.abs(Number(t.price) - Number(i.unitPrice)) > 0.001) {
+        changes.push({ key: i.key, title: t.title, was: i.unitPrice, now: t.price });
+        i.unitPrice = t.price;
       }
-      const gone = check.unavailable[0];
-      const moved = check.changes[0];
-      return res.status(409).json({
-        error: gone
-          ? `${gone.title} is no longer available on Steam.`
-          : `${moved.title} is now $${moved.now.toFixed(2)} on Steam (was $${moved.was.toFixed(2)}). Review the total and try again.`,
-        code: gone ? 'game_unavailable' : 'price_changed',
-        changes: check.changes,
-        unavailable: check.unavailable,
-      });
+    } else {
+      const g = gameById.get(String(i.gameId));
+      if (!g) return res.status(409).json({ error: `${i.title} is no longer available.`, code: 'game_unavailable' });
+      const now = i.edition === 'physical'
+        ? Number(g.physical?.price || g.price + 15)
+        : +(g.price * (1 - (g.discountPct || 0) / 100)).toFixed(2);
+      if (Math.abs(now - Number(i.unitPrice)) > 0.001) {
+        changes.push({ key: i.key, title: g.title, was: i.unitPrice, now });
+        i.unitPrice = now;
+      }
     }
+  }
+  if (changes.length) {
+    const moved = changes[0];
+    return res.status(409).json({
+      error: `${moved.title} is now $${Number(moved.now).toFixed(2)} (was $${Number(moved.was).toFixed(2)}). Review the total and try again.`,
+      code: 'price_changed',
+      changes,
+    });
   }
 
   const subtotal = +items.reduce((s, i) => s + i.unitPrice * i.qty, 0).toFixed(2);
