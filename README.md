@@ -2,7 +2,7 @@
 
 ReactJS SPA + Node.js + Express + MongoDB. Digital key delivery (AES-256-GCM) + toy collectibles, dev portal with revenue, community forums, library with playtime + keys, reviews, wishlist, shipping tracking, light/dark themes, editable profiles with address book.
 
-Steam data (title, capsule art, genres, price, platforms, release date) comes from the Steam Store API. Live player counts and community review verdicts come from public Steam Web APIs (`lib/steamLive.js`, 10-min cache).
+Catalog metadata (title, capsule art, genres, price, platforms, release date) was imported once and now lives in MongoDB. The running storefront reads only the local catalog; it does not call external game APIs for live player counts, news or prices.
 
 **Catalog** — 74 titles, grown from four batches of appids. Titles that should not be listed are filtered out at import: demos, DLC, playtests, videos, episodes, hardware and unreleased entries are all rejected from the Store API's own `type` and `release_date` fields. One caveat is documented in `seed/block-titles.js`: `content_descriptors.ids` comes back from this endpoint as empty objects, so the mature-content flags cannot be read programmatically and that list is curated by hand.
 
@@ -14,18 +14,17 @@ Steam data (title, capsule art, genres, price, platforms, release date) comes fr
 
 | Shown | Source |
 |---|---|
-| Title, studio, genres, price, discount, release date, platform list | Steam Store API |
-| System requirements (minimum + recommended, per OS) | Steam `pc_requirements` / `mac_requirements` / `linux_requirements` |
-| Cover and hero art | Steam CDN, largest asset that exists for that appid |
-| Feature categories | Steam `categories`, filtered to the ones a buyer filters on |
-| Player counts, review verdicts, news | Steam Web API, cached 10 minutes |
+| Title, studio, genres, price, discount, release date, platform list | Imported catalog metadata, stored in MongoDB |
+| System requirements (minimum + recommended, per OS) | Imported per title, stored in `game.systemReq` |
+| Cover and hero art | Downloaded once into GridFS, served through `/api/media/:id` |
+| Feature categories | Imported category list, filtered to the ones a buyer filters on |
 | Ledger counts, stock, order totals, revenue | Counted from MongoDB on request |
 | Shipping cost | **Sample rates** from `.env` — labelled as such on the checkout screen, not a carrier tariff |
 | Tax rate | `TAX_RATE` from `.env` |
 
-Where Steam publishes nothing, the field stays unset and the UI says so rather than showing a plausible-looking placeholder. Install size, version string and ESRB rating are not available from the API, so they are never invented — a fabricated rating would also silently defeat the "hide mature titles" preference, which reads that field.
+Where the source metadata has no value, the field stays unset and the UI says so rather than showing a plausible-looking placeholder. Install size, version string and ESRB rating are not available, so they are never invented — a fabricated rating would also silently defeat the "hide mature titles" preference, which reads that field.
 
-**Store filters** are built from what the catalog actually contains: genres, Steam feature categories (Single-player, Co-op, Steam Achievements, VR Supported…), platforms, price bands and five sort orders.
+**Store filters** are built from what the catalog actually contains: genres, feature categories (Single-player, Co-op, Achievements, VR Supported…), platforms, price bands and five sort orders.
 
 UI: React SPA. Design tokens and the three layout families live at the top of `client/src/index.css`.
 
@@ -46,7 +45,7 @@ Figures shown in the hero ledger are counted from MongoDB on each `/api/home` re
 | `client/` | ReactJS SPA (Vite). `npm run dev --prefix client` for hot-reload (proxies `/api` to :3000), `npm run build --prefix client` for production |
 | `server.js` | Express: serves `/api/*` JSON + `client/dist` static with SPA fallback |
 | `routes/api.js` | All JSON endpoints (auth, games, toys, cart, checkout, orders, library, dev, reviews, users, community) |
-| `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Post`, `Review` |
+| `models/` | `Game`, `Toy` (standalone merch collection), `GameKey`, `Order` (`kind: game/toy`), `User`, `Post`, `Review`, `Payout` |
 | `seed/` | `import-steam.js` (full reseed of the baseline catalog), `import-more.js` (adds missing appids, `--rebuild` restores a wiped catalog), `enrich-steam.js` (real system requirements, publishers, languages, Steam categories), `upgrade-covers.js` (high-res art pass), `strip-invented-data.js` (clears placeholder fields written by older imports), `check-db-health.js` (15-point database health check: connection, collections, indexes, API-versus-database agreement, write-and-read-back), `steamArt.js` / `steamReq.js` / `seed-reviews.js` / `seed-toys.js` / `block-titles.js` / `prune-catalog.js` / `find-mongo.js` (mongod discovery) / `check-db.js` (catalog verification) / `rotate-key-secret.js` (secret migration) / `reset-demo.js`, `clear-orders.js` |
 
 `npm run seed` chains the real importers. There is no longer a seeder that fabricates a fictional catalog — an earlier `seed/seed.js` invented titles, prices and install sizes and was wired to that script; it was removed rather than kept as a trap.
@@ -68,7 +67,7 @@ npm run build --prefix client  # build React frontend
 npm run dev            # http://localhost:3000
 ```
 
-MongoDB: install MongoDB Community Server (or point `MONGO_URI` at Atlas), make sure it listens on `mongodb://127.0.0.1:27017`. The server also runs with an empty DB (pages show empty states).
+MongoDB: install MongoDB Community Server (or point `MONGO_URI` at a managed cluster), make sure it listens on `mongodb://127.0.0.1:27017`. The server also runs with an empty DB (pages show empty states).
 
 ### `start-website.bat`
 
@@ -125,9 +124,9 @@ node seed/rotate-key-secret.js --apply    # re-encrypts and updates .env
 
 It decrypts every row with the old secret, verifies a round trip, aborts without writing if any row is unreadable, and rewrites `.env` only after the data is confirmed good. Changing `SESSION_SECRET` just signs everyone out.
 
-## Deploying to Render
+## Deploying to a Node host
 
-`render.yaml` is a Render blueprint: New → Blueprint → point at the repository. The values it sets are:
+`render.yaml` is a deployment blueprint: point the host at the repository. The values it sets are:
 
 | Setting | Value | Why |
 |---|---|---|
@@ -136,9 +135,9 @@ It decrypts every row with the old secret, verifies a round trip, aborts without
 | Health check | `/api/health` | answers even while MongoDB is still connecting |
 | `NODE_ENV` | `production` | marks session cookies `secure` |
 | `MONGO_URI` | *paste your own* | see below |
-| `SESSION_SECRET`, `KEY_ENCRYPTING_SECRET` | *generated by Render* | never commit these |
+| `SESSION_SECRET`, `KEY_ENCRYPTING_SECRET` | *generated by the platform* | never commit these |
 
-**MongoDB is not provided by Render's free tier.** The filesystem is ephemeral, so a database started as a file inside the service is wiped on every deploy and every spin-down. Use MongoDB Atlas — the free M0 cluster (512 MB) is more than this catalog needs — or a paid Render MongoDB instance, and paste the connection string into `MONGO_URI`.
+**Use a managed MongoDB cluster.** The service filesystem is ephemeral, so a database started as a file inside the service is wiped on every deploy and every spin-down. Paste the cluster connection string into `MONGO_URI`.
 
 **Populating it.** A fresh deployment has an empty catalog. Run the importers once against the deployed database:
 
@@ -146,13 +145,13 @@ It decrypts every row with the old secret, verifies a round trip, aborts without
 $env:MONGO_URI='mongodb+srv://...'; node seed/import-steam.js
 ```
 
-Render's servers can reach Steam, unlike some networks where it is blocked.
+Run the importers from a machine that can reach the catalog source; the deployed service itself only reads MongoDB.
 
 ### Two things that were broken before deployment
 
-`req.protocol` is used to build the payment gateway's return URL. Render terminates TLS and forwards the request, so without `app.set('trust proxy', 1)` Express sees `http` and hands the shopper a downgraded redirect on an https site. The setting is in `server.js`.
+`req.protocol` is used to build the payment gateway's return URL. A reverse proxy terminates TLS and forwards the request, so without `app.set('trust proxy', 1)` Express sees `http` and hands the shopper a downgraded redirect on an https site. The setting is in `server.js`.
 
-Sessions used the default in-memory store. Memory lives in the process, so every deploy and every automatic spin-down after fifteen idle minutes signs everyone out. `lib/mongoSessionStore.js` keeps them in MongoDB instead, with a TTL index so expired rows are removed by Mongo itself. `node seed/check-session.js` signs in, restarts the server, and confirms the same cookie still works.
+Sessions live in a signed HttpOnly cookie (`cookie-session`), not in process memory or MongoDB. The browser can read its own payload but cannot change it without invalidating the signature, so a deploy or restart does not silently keep stale server state around.
 
 Every async route handler is wrapped so a rejected promise becomes a JSON error instead of an unhandled rejection — Express 4 does not do this on its own, and a single bad id such as `/api/orders/garbage` used to kill the whole server. While MongoDB is still connecting the API answers `503` rather than letting Mongoose buffer queries; the SPA shows a "Connecting to MongoDB" screen and polls until the database answers.
 - **Secret warning** — prints a notice if `.env` still contains the `change-me` placeholders from `.env.example`.
@@ -165,12 +164,12 @@ Google login (optional): create an OAuth 2.0 Client ID at `console.cloud.google.
 |---|---|
 | `/api/home` | featured, deals, fresh, toys, category tiles, threads |
 | `/api/auth` | register, login, logout, me (session + bcrypt) |
-| `/api/games` | Steam-style store: q, genre, tag, platform, feature, sort, maxPrice, onSale + pager, detail + `keysAvailable`, wishlist |
+| `/api/games` | Game catalog: q, genre, tag, platform, feature, sort, maxPrice, onSale + pager, detail, wishlist |
 | `/api/toys` | Separate merch storefront (own collection): q, category, brand, sort + pager, detail + related game, wishlist |
 | `/api/cart` | add / qty / remove, mixed digital games + boxed games + toys (`kind` split) |
-| `/api/checkout` + `/api/orders` | quote, atomic place order (GameKey.claimOne + stock guards), tax+shipping math, tracking `PV-XXX`, advance scan, order detail shows decrypted demo keys |
+| `/api/checkout` + `/api/orders` | quote, price revalidation against MongoDB, atomic order creation, stock guards, tax+shipping math, tracking, advance scan, order detail shows decrypted demo keys |
 | `/api/library` | owned games, play +30min, achievements, delivered keys with copy button, toy library + both wishlists (Games / Collectibles / Wishlist tabs), `/api/recommendations` by genre |
-| `/api/dev` | apply, dashboard (gross, 70% cut, monthly, by-country, low-key/low-box alerts), new game, edit game, payout, `/:id/keys` vault (counts, masked list, CSV import, demo generate, revoke), toy shelf restock + price edit |
+| `/api/dev` | apply, dashboard (gross, 70% cut, monthly, by-country, stock alerts), new game, edit/delete game, payout request, `/:id/keys` vault (issued counts, masked list, revoke), toy shelf restock + price edit |
 | `/api/dev/sales` | report view + CSV download of monthly revenue (React page at `/dev/sales`) |
 | `/api/community` | boards, post detail, new post, replies |
 | `/api/reviews` | own-to-review, helpful votes, dev response |
@@ -191,19 +190,19 @@ npm run dev            # http://localhost:3000
 
 Seed logins: `gamer@vault.gg` / `dev@neonforge.gg` / `mods@vault.gg` — password `password123`.
 
-Demo keys are fake `DEMO-XXXXX-XXXXX-XXXXX` placeholders encrypted with AES-256-GCM (`lib/keyCrypto.js`). Not real Steam keys — coursework only. Restock in Dev console → Keys.
+Demo keys are fake `DEMO-XXXXX-XXXXX-XXXXX` placeholders encrypted with AES-256-GCM (`lib/keyCrypto.js`). Not real game keys — coursework only.
 
 ## Key delivery model (race-safe)
 
-- `GameKey { game, codeEnc, codeHash unique, status: available|sold|revoked, order, user }` + index `{game:1,status:1}`.
-- Checkout claims via `findOneAndUpdate({game,status:available})` — 2 buyers can't get same key.
-- Physical stock uses `findOneAndUpdate({_id, stock:{$gte:qty}}, $inc:-qty)` + rollback on failure.
-- `Game.stats.keysAvailable/keysSold` cached for fast store badges.
+- `GameKey { game, codeEnc, codeHash unique, status: sold|revoked, order, user, soldAt }` + index `{game:1,status:1}`.
+- There is no key stock. A key document is created only when a paid order is fulfilled; `codeHash` is unique, so the same key can never be issued twice.
+- Digital orders are fulfilled through `lib/keyProvider.js`; physical stock uses `findOneAndUpdate({_id, stock:{$gte:qty}}, $inc:-qty)` with rollback on failure.
+- Only `toys.stock` and `games.physical.stock` represent inventory.
 
 ## Shipping model
 
 - `standard`: $4.99 + $0.5/lb, free over $75 · `express`: $14.99 + $1.2/lb · `overnight`: $29.99 + $1.8/lb
 - Tax 8%. Tracking `PV-<base36><rand>`. Status flow: packing → shipped → in_transit → out_for_delivery → delivered.
-- Dev cut 70% credited to `devProfile.balanceOwed` per order item; payout resets at $10 min.
+- Dev cut 70% credited to `devProfile.balanceOwed` per order item; a payout request (minimum $10) creates a `pending` Payout and zeroes the displayed balance. Admin marks it paid or rejected; rejection restores the balance.
 
-`users` (game library + toyLibrary, wishlists, addresses, playHistory), `games` (genres/tags/platforms/features Steam-style + digital + physical subdoc, stats.keysAvailable), `toys` (standalone merch: brand, category, price, stock), `gamekeys` (codeEnc AES-256-GCM, codeHash unique, status, order, user), `orders` (items.kind game/toy, keyIds, shipment, devPayouts), `posts` (replies embedded), `reviews`.
+`users` (game library + toyLibrary, wishlists, addresses, playHistory, `isBanned`), `games` (genres/tags/platforms/features, digital + physical subdoc, stats), `toys` (standalone merch: brand, category, price, stock), `gamekeys` (codeEnc AES-256-GCM, codeHash unique, status, order, user), `orders` (items.kind game/toy, keyIds, shipment, devPayouts), `payments` (gateway order, amount, status), `payouts` (developer, amount, status), `posts` (replies embedded), `reviews`, `qrlogins`. Sessions are not a collection.

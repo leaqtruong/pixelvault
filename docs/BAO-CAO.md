@@ -9,7 +9,7 @@ PixelVault là cửa hàng game số + merch vật lý, gồm React SPA, Node/Ex
 ## 1.1 Tổ chức dữ liệu
 
 - Hệ quản trị: **MongoDB**, truy cập qua **Mongoose** (database `pixelvault`).
-- Dữ liệu nghiệp vụ nằm trong 9 collection: `users`, `games`, `toys`, `gamekeys`, `orders`, `payments`, `posts`, `reviews`, `qrlogins`.
+- Dữ liệu nghiệp vụ nằm trong 10 collection: `users`, `games`, `toys`, `gamekeys`, `orders`, `payments`, `posts`, `reviews`, `qrlogins`, `payouts`.
 - Ngoài ra: GridFS `images.files` / `images.chunks` (ảnh game, toy).
 - Quan hệ dùng `ObjectId` + `ref`; dữ liệu con (thư viện, địa chỉ, item đơn hàng, reply) được nhúng trực tiếp trong document cha.
 
@@ -25,6 +25,7 @@ classDiagram
     string email
     string passwordHash
     string role
+    boolean isBanned
     List~ObjectId~ wishlist
     List~ObjectId~ toyWishlist
     List~LibraryEntry~ library
@@ -142,11 +143,22 @@ classDiagram
     Date createdAt
   }
 
+  class Payout {
+    ObjectId _id
+    ObjectId developer
+    number amount
+    string status
+    Date requestedAt
+    Date paidAt
+    string note
+  }
+
   User "1" --> "*" Game : developer
   User "1" --> "*" Order : buyer
   User "1" --> "*" Review : writes
   User "1" --> "*" Post : authors
   User "1" --> "*" Toy : owns / wishes
+  User "1" --> "*" Payout : requests
   Game "1" --> "*" GameKey : issued for
   Game "1" --> "*" Review : receives
   Game "0..1" <-- "*" Post : discusses
@@ -160,7 +172,7 @@ classDiagram
 | Nhóm trường | Nội dung |
 |---|---|
 | Định danh | `username` (unique), `email` (unique), `passwordHash` (bcrypt, `select:false`) |
-| Hồ sơ | `displayName`, `phone`, `avatar`, `bio`, `role` (`user`/`developer`/`admin`) |
+| Hồ sơ | `displayName`, `phone`, `avatar`, `bio`, `role` (`user`/`developer`/`admin`), `isBanned` |
 | Thư viện | `library[]` (game, edition, purchasedAt, playMinutes, achievements), `toyLibrary[]` (toy, qty) |
 | Mong muốn | `wishlist[]`, `toyWishlist[]` |
 | Giao hàng | `addresses[]` (label, fullName, street, city, region, postal, country, phone) |
@@ -174,7 +186,7 @@ classDiagram
 | Thông tin | `title`, `slug` (unique), `tagline`, `description`, `developer` (ref User), `studioName`, `publisher` |
 | Phân loại | `genres[]`, `tags[]`, `platforms[]`, `features[]`/`categories[]`, `contentWarnings[]` |
 | Giá | `price`, `discountPct` (0–90), `physical` (enabled, price, stock, weightLb, warehouse) |
-| Steam | `steamAppId`, `digitalSku`, `systemReq` (minimum/recommended/lines/specs), `languages`, `languageList[]`, `deckVerified` |
+| Kỹ thuật số | `steamAppId` (mã nguồn tham chiếu), `digitalSku`, `systemReq` (minimum/recommended/lines/specs), `languages`, `languageList[]`, `deckVerified` |
 | Media | `coverImage`, `screenshots[]` (URL `/api/media/<id>` từ GridFS) |
 | Thống kê | `stats.views/unitsDigital/unitsPhysical/revenueGross/reviewSum/reviewCount/keysSold` |
 | Trạng thái | `status` (`draft`/`pending`/`published`/`delisted`), `featured`, `releaseDate` |
@@ -200,19 +212,25 @@ classDiagram
 ### qrlogins
 `token` (unique), `status` (pending/confirmed), `user`, `createdAt` (TTL 90 giây).
 
+### payouts
+`developer` (ref User), `amount`, `status` (`pending`/`paid`/`rejected`), `requestedAt`, `paidAt`, `note`. Khi developer gửi yêu cầu, số dư hiển thị được đưa về 0 để không thể yêu cầu hai lần; admin duyệt `paid` hoặc `rejected` (hoàn lại số dư).
+
 ## 1.4 Dữ liệu trong database
+
+Số liệu dưới đây lấy từ database demo đang chạy.
 
 | Collection | Số document | Vai trò |
 |---|---:|---|
-| `users` | 7 | 3 tài khoản demo (gamer / dev / mod) + 1 admin + 3 tài khoản test |
-| `games` | 74 | Catalog game đồng bộ từ Steam Store API |
+| `users` | 8 | 5 user, 2 developer, 1 admin (gồm tài khoản demo và test) |
+| `games` | 74 | Catalog game đã nhập và lưu trong MongoDB |
 | `toys` | 12 | Merch vật lý (plush, figure, …) |
 | `reviews` | 14 | Đánh giá của người dùng |
 | `posts` | 1 | Bài cộng đồng |
-| `orders` | 0 | Chưa phát sinh đơn |
-| `gamekeys` | 0 | Key chỉ sinh khi đơn được fulfilment |
-| `payments` | 0 | Chưa có giao dịch gateway |
+| `orders` | 4 | 1 đơn `paid`, 3 đơn `cancelled` từ luồng thanh toán demo |
+| `gamekeys` | 1 | Key demo đã cấp cho đơn `paid` |
+| `payments` | 4 | 1 giao dịch `success`, 3 giao dịch `pending` |
 | `qrlogins` | 0 | Token QR dùng một lần, tự hết hạn |
+| `payouts` | 0 | Yêu cầu rút tiền của developer |
 | `images.files` | 394 | Ảnh trong GridFS |
 | `images.chunks` | 744 | Các chunk nhị phân của ảnh |
 
@@ -303,7 +321,48 @@ classDiagram
 }
 ```
 
-**orders / gamekeys / payments** hiện chưa có document. Cấu trúc của chúng được mô tả ở mục 1.3; key chỉ được tạo khi một đơn `paid` được fulfilment.
+**orders**
+```json
+{
+  "_id": "6af4ba500d61444671a83445",
+  "user": "6ac6e947b5813ede94f1c3a9",
+  "status": "paid",
+  "subtotal": 9.99,
+  "grandTotal": 10.79,
+  "items": [{ "title": "Terraria", "edition": "digital", "qty": 1,
+              "unitPrice": 9.99, "keyIds": ["6af4ba500d61444671a83450"] }],
+  "payment": { "method": "gateway" }
+}
+```
+
+**payments**
+```json
+{
+  "_id": "6af4ba500d61444671a83447",
+  "order": "6af4ba500d61444671a83445",
+  "user": "6ac6e947b5813ede94f1c3a9",
+  "amount": 269750,
+  "currency": "VND",
+  "provider": "sandbox",
+  "status": "success",
+  "gatewayOrderId": "PVMWCHCISS55CDC6"
+}
+```
+
+**gamekeys**
+```json
+{
+  "_id": "6af4ba500d61444671a83450",
+  "game": "6acc33194fda3c326e2e2a3f",
+  "user": "6ac6e947b5813ede94f1c3a9",
+  "order": "6af4ba500d61444671a83445",
+  "status": "sold",
+  "source": "demo",
+  "platform": "Steam"
+}
+```
+
+Key chỉ được tạo khi một đơn `paid` được fulfilment; `codeEnc` và `codeHash` không hiển thị trong ví dụ vì là dữ liệu bảo mật.
 
 ## 1.5 Index chính
 
@@ -318,14 +377,14 @@ classDiagram
 | reviews | `game+user` (unique) | mỗi người 1 review/game |
 | posts | `board` | lọc theo board |
 | qrlogins | `token` (unique), TTL 90s | QR dùng một lần |
+| payouts | `developer`, `status`, `requestedAt` | lọc yêu cầu theo developer / trạng thái |
 
 ## 1.6 Nguồn dữ liệu
 
-- **Steam Store API**: tên, mô tả, thể loại, tags, giá, ngày phát hành, system requirements, ngôn ngữ, ảnh bìa.
-- **Steam Web API**: số người đang chơi, đánh giá tổng hợp, tin tức.
+- **Catalog**: metadata cửa hàng (tên, mô tả, thể loại, tags, giá, ngày phát hành, system requirements, ngôn ngữ, ảnh bìa) được nhập một lần và lưu trong MongoDB; runtime chỉ đọc database, không gọi dịch vụ ngoài.
 - **VNPay sandbox**: callback thanh toán có chữ ký HMAC-SHA512.
 - **Seed**: 3 tài khoản demo, 12 toy, 14 review, 1 bài forum.
-- **Ảnh**: tải từ Steam CDN vào GridFS (394 file), phục vụ qua `/api/media/:id` — không hotlink.
+- **Ảnh**: đã nhập vào GridFS (394 file), phục vụ qua `/api/media/:id` — không hotlink.
 
 ---
 
@@ -360,7 +419,7 @@ sequenceDiagram
   API->>DB: User.findOne({ email })
   DB-->>API: user + passwordHash
   API->>API: bcrypt.compare()
-  API->>DB: lưu session
+  API->>API: ký cookie session
   API-->>SPA: { user }
   SPA-->>U: đăng nhập thành công
 ```
@@ -407,7 +466,7 @@ sequenceDiagram
 
 ## 2.5 Chi tiết game
 
-**Giao diện:** `/games/:slug` — gallery, mô tả, tag, system requirements (Minimum/Recommended), bảng ngôn ngữ, tin tức, review, "More like this", rail mua.
+**Giao diện:** `/games/:slug` — gallery, mô tả, tag, system requirements (Minimum/Recommended), bảng ngôn ngữ, review, "More like this", rail mua.
 
 ![Game detail](screens/03-game-detail.png)
 ![System requirements](screens/04-game-specs.png)
@@ -415,11 +474,10 @@ sequenceDiagram
 
 **Luồng xử lý:**
 1. `GET /api/games/:slug` — tìm game, tăng `stats.views`, lấy review, thread liên quan.
-2. `GET /api/live/:appid` và `GET /api/news/:appid` — số người chơi + tin tức từ Steam Web API (cache 10 phút).
-3. Client render gallery, tag, bảng specs (`systemReq.specs`) và bảng ngôn ngữ (`languageList`).
-4. "More like this": `GET /api/games?genre=<genre>&limit=5`, bỏ game hiện tại.
-5. Người dùng thêm vào giỏ (`POST /api/cart/add`) hoặc wishlist (`POST /api/games/:id/wishlist`).
-6. Mỗi lần xem, client lưu `{slug,title,coverImage}` vào `localStorage.pv:recent` để rail hiện "Recently viewed".
+2. Client render gallery, tag, bảng specs (`systemReq.specs`) và bảng ngôn ngữ (`languageList`).
+3. "More like this": `GET /api/games?genre=<genre>&limit=5`, bỏ game hiện tại.
+4. Người dùng thêm vào giỏ (`POST /api/cart/add`) hoặc wishlist (`POST /api/games/:id/wishlist`).
+5. Mỗi lần xem, client lưu `{slug,title,coverImage}` vào `localStorage.pv:recent` để rail hiện "Recently viewed".
 
 ## 2.6 Merch / đồ chơi
 
@@ -574,22 +632,28 @@ sequenceDiagram
 1. `POST /api/dev/apply` — nâng role `developer`, tạo `devProfile`.
 2. `GET /api/dev` — tổng hợp từ `Order.devPayouts`, `Game.stats`, `Review`.
 3. `POST /api/dev/new` — tạo game `pending`/`published` (tuỳ quyền).
-4. `POST /api/dev/:id/edit` — sửa giá, discount, status, tồn kho physical.
-5. `POST /api/dev/payout` — rút số dư (tối thiểu $10), reset `balanceOwed`.
-6. `GET /api/dev/:id/keys` + `/keys/list` — thống kê key đã cấp; `POST /:id/keys/:keyId/revoke` thu hồi.
-7. `GET /api/dev/sales` — doanh thu theo tháng + CSV.
-8. `POST /api/dev/toys/:id/restock` — nhập thêm tồn kho toy.
+4. `POST /api/dev/:id/edit` — sửa title, tagline, mô tả, cover, genres, tags, giá, discount, status và tồn kho physical.
+5. `DELETE /api/dev/:id` — xoá game cùng key, review, bài forum liên quan.
+6. `POST /api/dev/payout` — tạo yêu cầu rút tiền `pending` (tối thiểu $10), đưa số dư hiển thị về 0.
+7. `GET /api/dev/:id/keys` + `/keys/list` — thống kê key đã cấp; `POST /:id/keys/:keyId/revoke` thu hồi.
+8. `GET /api/dev/sales` — doanh thu theo tháng + CSV.
+9. `POST /api/dev/toys/:id/restock` — nhập thêm tồn kho toy.
 
 ## 2.16 Admin desk
 
-**Giao diện:** `/admin` — KPI, tab Orders / Posts / Reviews; nút "Mark shipped"/"Mark delivered", xoá bài/review.
+**Giao diện:** `/admin` — bảng điều khiển với KPI và các tab Users / Games / Toys / Orders / Payments / Payouts / Moderation; tìm kiếm, tạo-sửa-xoá game và toy, xem chi tiết user, đổi role, ban/unban, nhập tracking, refund, duyệt payout, xoá bài/review và xuất CSV đơn hàng.
 
 ![Admin](screens/19-admin.png)
 
 **Luồng xử lý:**
-1. `GET /api/admin` — 100 đơn gần nhất, 60 bài, 60 review.
-2. `POST /api/admin/orders/:id/advance` — chuyển trạng thái shipment, cập nhật order.
-3. `DELETE /api/admin/posts/:id` / `DELETE /api/admin/reviews/:id` — xoá nội dung; xoá review cập nhật lại thống kê game.
+1. `GET /api/admin` — tổng hợp đơn, user, game, toy, payment, payout, bài, review và KPI.
+2. `POST /api/admin/games` / `/api/admin/games/:id` / `DELETE /api/admin/games/:id` — CRUD catalog game.
+3. `POST /api/admin/toys` / `/api/admin/toys/:id` / `DELETE /api/admin/toys/:id` — CRUD merch.
+4. `POST /api/admin/users/:id/role` / `/api/admin/users/:id/ban` — đổi role, ban/unban; user bị ban bị chặn ở các route cần đăng nhập.
+5. `POST /api/admin/orders/:id/advance` — chuyển trạng thái shipment; `POST /api/admin/orders/:id/tracking` — lưu carrier + mã vận đơn; `POST /api/admin/orders/:id/refund` — hoàn tiền, thu hồi key và hoàn kho.
+6. `POST /api/admin/payouts/:id/pay` / `/reject` — duyệt chi hoặc từ chối; từ chối hoàn lại số dư developer.
+7. `DELETE /api/admin/posts/:id` / `DELETE /api/admin/reviews/:id` — xoá nội dung; xoá review cập nhật lại thống kê game.
+8. `GET /api/admin/orders.csv` — xuất CSV đơn hàng.
 
 ## 2.17 Hồ sơ & cài đặt
 
@@ -609,7 +673,7 @@ sequenceDiagram
 **Giao diện:** ảnh trong mọi card/detail; URL dạng `/api/media/<fileId>`.
 
 **Luồng xử lý:**
-1. `seed/migrate-images-to-gridfs.js` tải ảnh từ Steam CDN, lưu vào bucket `images`.
+1. `seed/migrate-images-to-gridfs.js` nhập ảnh catalog vào bucket `images` của GridFS.
 2. Document game/toy lưu URL nội bộ `/api/media/<id>` thay vì hotlink.
 3. `GET /api/media/:id` mở `GridFSBucket.openDownloadStream`, set `Content-Type` + cache `immutable`.
 4. Ảnh không nằm trên filesystem; backup MongoDB là đủ.
