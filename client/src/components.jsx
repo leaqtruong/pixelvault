@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useEffect, useState, createContext, useContext } from 'react';
+import { useEffect, useState, createContext, useContext, useRef } from 'react';
 import { api, priceOf } from './api.js';
 import { BUILD } from './version.js';
 
@@ -38,6 +38,66 @@ export function ToastHost({ children }) {
   );
 }
 export const useToast = () => useContext(ToastCtx);
+
+/* Direct image upload. The browser sends the file as the raw request body;
+   the server stores it in GridFS and returns /api/media/<id>, which the
+   hidden input carries into the surrounding form. */
+export function ImageUpload({ name, defaultValue = '', kind = 'avatar', label = 'Upload image' }) {
+  const [url, setUrl] = useState(defaultValue || '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const inputRef = useRef(null);
+
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr('');
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+      setErr('PNG, JPG, WebP or GIF only.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErr('Max 5 MB.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/media?kind=${kind}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Upload failed.');
+      setUrl(data.url);
+    } catch (x) {
+      setErr(x.message || 'Upload failed.');
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className={'upload-box ' + (kind === 'cover' ? 'upload-cover' : 'upload-avatar')}>
+      <div className="upload-preview">
+        {url ? <img src={url} alt="" /> : <span>{kind === 'cover' ? 'No cover' : 'No avatar'}</span>}
+      </div>
+      <div className="upload-body">
+        <div className="upload-actions">
+          <button type="button" className="ghost-btn sm" onClick={() => inputRef.current?.click()} disabled={busy}>
+            {busy ? 'Uploading…' : (url ? 'Replace image' : label)}
+          </button>
+          {url && <button type="button" className="ghost-btn sm" onClick={() => setUrl('')}>Remove</button>}
+        </div>
+        <p className={'tiny' + (err ? ' err' : '')}>{err || 'PNG, JPG, WebP or GIF · max 5 MB'}</p>
+      </div>
+      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={onFile} />
+      <input type="hidden" name={name} value={url} />
+    </div>
+  );
+}
 
 /* ===================================================================
    SIDEBAR — hairline ledger of sections, not a stack of brown boxes
@@ -88,7 +148,7 @@ function Sidebar({ me, theme, onTheme, collapsed, onToggle, cartCount = 0 }) {
           {me ? (
             <div className="rail-sec">
               <Link className="rail-user" to={`/users/${me.username}`}>
-                <span className="avatar-chip lg">{(me.username || '?')[0].toUpperCase()}</span>
+                <span className="avatar-chip lg">{me.avatar ? <img src={me.avatar} alt="" /> : (me.username || '?')[0].toUpperCase()}</span>
                 <div><b>{me.username}</b><br /><span className="tiny">{me.role}</span></div>
               </Link>
               <div className="rail-links">
@@ -200,7 +260,6 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
   useEffect(() => { try { localStorage.setItem('pv-side', hideSide ? 'hide' : 'show'); } catch {} }, [hideSide]);
   const on = (to) => (loc.pathname === to ? 'active' : '');
   const logout = async () => { await api('/auth/logout', { method: 'POST' }); onLogout(); nav('/'); };
-  const genre = ['Action', 'RPG', 'Strategy', 'Indie', 'Adventure', 'Simulation', 'Horror', 'Free to Play'];
 
   return (
     <>
@@ -221,7 +280,7 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
             {me ? (
               <>
                 <Link className="avatar-chip" to={`/users/${me.username}`} title={me.username}>
-                  {(me.username || '?')[0].toUpperCase()}
+                  {me.avatar ? <img src={me.avatar} alt="" /> : (me.username || '?')[0].toUpperCase()}
                 </Link>
                 <button className="ghost-btn sm" onClick={logout}>Log out</button>
               </>
@@ -241,39 +300,6 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
             <Link className={on('/community')} to="/community">Community</Link>
             <Link className={on('/dev')} to="/dev">Dev Portal</Link>
             {me?.role === 'admin' && <Link className={on('/admin')} to="/admin">Admin</Link>}
-            <span className="rule-v" />
-            <div className="drop">
-              <button>Categories</button>
-              <div className="drop_menu">
-                {genre.map((g) => <Link key={g} to={`/games?genre=${encodeURIComponent(g)}`}>{g}</Link>)}
-              </div>
-            </div>
-            <div className="drop">
-              <button>Platforms</button>
-              <div className="drop_menu">
-                {['Windows', 'Mac', 'Linux', 'Steam Deck', 'VR'].map((p) => (
-                  <Link key={p} to={`/games?platform=${encodeURIComponent(p)}`}>{p}</Link>
-                ))}
-              </div>
-            </div>
-            <div className="drop">
-              <button>Merch</button>
-              <div className="drop_menu">
-                <Link to="/toys">All Collectibles</Link>
-                <Link to="/toys?category=Plush">Plushies</Link>
-                <Link to="/toys?category=Figure">Figures</Link>
-                <Link to="/toys?category=Pins">Pins</Link>
-              </div>
-            </div>
-            <div className="drop">
-              <button>Your Store</button>
-              <div className="drop_menu">
-                <Link to="/recommendations">Recommendations</Link>
-                <Link to="/library">Your Library</Link>
-                <Link to="/orders">Order history</Link>
-                <Link to="/settings">Settings</Link>
-              </div>
-            </div>
           </nav>
         </div>
       </header>

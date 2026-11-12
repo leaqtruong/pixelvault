@@ -693,3 +693,23 @@ input,select,textarea{border-radius:var(--radius)}
   .gcard:hover,.marquee a:hover img,.hero-art:hover img{transform:none}
   *{transition-duration:.01ms !important}
 }
+
+/* profile avatar + direct image upload */
+.avatar-chip{overflow:hidden}
+.avatar-chip img{width:100%;height:100%;object-fit:cover;display:block}
+.avatar{overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.avatar.lg{width:72px;height:72px;font-size:30px}
+.profile-head{display:flex;align-items:center;gap:16px;margin:0 0 16px}
+.profile-head h1{margin:0}
+.upload-box{display:flex;align-items:center;gap:12px;border:1px solid var(--rule);
+  background:var(--field);padding:10px}
+.upload-box.upload-avatar .upload-preview{width:64px;height:64px}
+.upload-box.upload-cover .upload-preview{width:160px;height:90px}
+.upload-preview{flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;
+  background:var(--card-hi);border:1px solid var(--rule-hard);color:var(--faint);
+  font-size:10px;text-align:center}
+.upload-preview img{width:100%;height:100%;object-fit:cover;display:block}
+.upload-body{flex:1;min-width:0}
+.upload-actions{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.upload-body .tiny{margin:0}

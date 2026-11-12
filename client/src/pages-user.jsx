@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { api } from './api.js';
-import { useToast } from './components.jsx';
+import { useToast, ImageUpload } from './components.jsx';
 
 export function Login({ onLogin }) {
   const [err, setErr] = useState('');
@@ -143,16 +143,24 @@ export function Profile({ me }) {
     setD({ ...d, user: { ...d.user, addresses: r.addresses } });
   };
   return (<>
-    <h1>{d.user.displayName || d.user.username}</h1>
-    <p className="muted">@{d.user.username} · {d.user.email} {d.user.phone ? '· ' + d.user.phone : ''}</p>
-    {d.user.bio && <p>{d.user.bio}</p>}
-    {(d.user.preferences?.favoriteGenres || []).length > 0 && <p className="tiny">Likes: {d.user.preferences.favoriteGenres.join(', ')}</p>}
+    <div className="profile-head">
+      <div className="avatar lg">
+        {d.user.avatar ? <img src={d.user.avatar} alt="" /> : (d.user.displayName || d.user.username || '?')[0].toUpperCase()}
+      </div>
+      <div>
+        <h1>{d.user.displayName || d.user.username}</h1>
+        <p className="muted">@{d.user.username} · {d.user.email} {d.user.phone ? '· ' + d.user.phone : ''}</p>
+        {d.user.bio && <p>{d.user.bio}</p>}
+        {(d.user.preferences?.favoriteGenres || []).length > 0 && <p className="tiny">Likes: {d.user.preferences.favoriteGenres.join(', ')}</p>}
+      </div>
+    </div>
     {d.isSelf && (
       <div className="two-col">
         <div className="panel"><h3>Edit profile</h3>
           <form onSubmit={save} style={{ display: 'grid', gap: 8 }}>
             <input name="displayName" placeholder="Display name" defaultValue={d.user.displayName} />
-            <div className="row"><input name="phone" placeholder="Phone" defaultValue={d.user.phone} /><input name="avatar" placeholder="Avatar image URL" defaultValue={d.user.avatar} /></div>
+            <input name="phone" placeholder="Phone" defaultValue={d.user.phone} />
+            <ImageUpload name="avatar" defaultValue={d.user.avatar} kind="avatar" label="Upload avatar" />
             <textarea name="bio" placeholder="Bio" defaultValue={d.user.bio} />
             <input name="favoriteGenres" placeholder="Favorite genres (comma separated)" defaultValue={(d.user.preferences?.favoriteGenres || []).join(', ')} />
             <label className="tiny"><input type="checkbox" name="matureFilter" defaultChecked={d.user.preferences?.matureFilter} /> Hide mature titles</label>
@@ -376,7 +384,8 @@ export function DevNew() {
   };
   return <><h1>Publish a game</h1><form className="panel" onSubmit={submit} style={{ display: 'grid', gap: 10 }}>
     <input name="title" placeholder="Title *" required /><input name="tagline" placeholder="Tagline" /><textarea name="description" placeholder="Description" />
-    <div className="row"><input name="studioName" placeholder="Studio" /><input name="coverImage" placeholder="Cover image URL" /></div>
+    <input name="studioName" placeholder="Studio" />
+    <ImageUpload name="coverImage" kind="cover" label="Upload cover" />
     <div className="row"><input name="price" type="number" step="0.01" placeholder="Price *" required /><input name="discountPct" type="number" placeholder="% off" /><input name="genres" placeholder="Genres (comma)" /></div>
     <button className="cta-btn big">Publish</button></form>{msg && <p className="err">{msg}</p>}</>;
 }

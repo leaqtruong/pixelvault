@@ -25,6 +25,23 @@ const router = express.Router();
 // request, not a server fault — checked before it reaches a query.
 const isObjectId = (v) => typeof v === 'string' && /^[0-9a-fA-F]{24}$/.test(v);
 
+const IMAGE_TYPES = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+
+/* Content-Type is client-supplied, so check the signature as well. */
+function looksLikeImage(buf, mime) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) return false;
+  if (mime === 'image/png') return buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+  if (mime === 'image/jpeg') return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  if (mime === 'image/gif') return buf.toString('ascii', 0, 4) === 'GIF8';
+  if (mime === 'image/webp') return buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP';
+  return false;
+}
+
 // ---------- deployed build stamp ----------
 // The SPA polls this. If the bundle on disk is newer than what the tab is
 // running, the client reloads itself — no more staring at a stale build.
@@ -105,7 +122,7 @@ const needAdmin = (req, res, next) => {
   if (req.session.user.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
   next();
 };
-const me = (req) => (req.session.user ? { _id: req.session.user._id, username: req.session.user.username, role: req.session.user.role, email: req.session.user.email } : null);
+const me = (req) => (req.session.user ? { _id: req.session.user._id, username: req.session.user.username, role: req.session.user.role, email: req.session.user.email, avatar: req.session.user.avatar || '' } : null);
 
 // ---------- auth ----------
 router.post('/auth/register', async (req, res) => {
@@ -117,7 +134,7 @@ router.post('/auth/register', async (req, res) => {
     if (exists) return res.status(400).json({ error: 'Username or email taken.' });
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({ username, email: String(email).toLowerCase(), passwordHash });
-    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email };
+    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email, avatar: user.avatar || '' };
     res.json({ user: me(req) });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -143,12 +160,18 @@ router.post('/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
     loginLimiter.clear(req, email);
-    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email };
+    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email, avatar: user.avatar || '' };
     res.json({ user: me(req) });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 router.post('/auth/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
-router.get('/auth/me', (req, res) => res.json({ user: me(req) }));
+router.get('/auth/me', async (req, res) => {
+  if (req.session.user && req.session.user.avatar === undefined) {
+    const u = await User.findById(req.session.user._id).select('avatar').lean().catch(() => null);
+    req.session.user.avatar = u?.avatar || '';
+  }
+  res.json({ user: me(req) });
+});
 
 function paginate(list, page, limit) {
   const pg = Math.max(1, parseInt(page, 10) || 1);
@@ -1139,7 +1162,10 @@ router.post('/dev/:id/keys/:keyId/revoke', needDev, async (req, res) => {
 });
 
 router.get('/dev/toys', needDev, async (req, res) => {
-  const toys = await Toy.find({}).sort({ title: 1 }).lean();
+  /* A developer manages their own listings only; the store account (admin)
+     sees the shared shelf. Store-owned toys have seller: null. */
+  const filter = req.session.user.role === 'admin' ? {} : { seller: req.session.user._id };
+  const toys = await Toy.find(filter).sort({ title: 1 }).lean();
   res.json({ toys });
 });
 
@@ -1147,7 +1173,9 @@ router.post('/dev/toys/:id/restock', needDev, async (req, res) => {
   const patch = {};
   if (req.body.stock !== undefined) patch.stock = Math.max(0, Math.min(9999, Number(req.body.stock) || 0));
   if (req.body.price !== undefined) patch.price = Math.max(0, Number(req.body.price) || 0);
-  const t = await Toy.findById(req.params.id);
+  const filter = { _id: req.params.id };
+  if (req.session.user.role !== 'admin') filter.seller = req.session.user._id;
+  const t = await Toy.findOne(filter);
   if (!t) return res.status(404).json({ error: 'Not found' });
   await Toy.updateOne({ _id: t._id }, patch);
   res.json({ ok: true });
@@ -1282,7 +1310,7 @@ router.post('/auth/google', async (req, res) => {
       user.avatar = String(info.picture).slice(0, 500);
       await user.save();
     }
-    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email };
+    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email, avatar: user.avatar || '' };
     res.json({ user: me(req) });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -1351,10 +1379,10 @@ router.post('/qrlogin/activate', async (req, res) => {
     const qr = await QrLogin.findOne({ token });
     if (!qr) return res.status(404).json({ error: 'QR code expired or invalid.' });
     if (qr.status !== 'confirmed') return res.status(409).json({ error: 'Not confirmed yet.' });
-    req.session.user = { _id: qr.user, username: '', role: 'user', email: '' };
+    req.session.user = { _id: qr.user, username: '', role: 'user', email: '', avatar: '' };
     await QrLogin.deleteOne({ _id: qr._id });
-    const user = await User.findById(qr.user).select('username role email').lean();
-    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email };
+    const user = await User.findById(qr.user).select('username role email avatar').lean();
+    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email, avatar: user.avatar || '' };
     res.json({ ok: true, user: me(req) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1362,6 +1390,42 @@ router.post('/qrlogin/activate', async (req, res) => {
 // ---------- media (GridFS) ----------
 // Images are stored in MongoDB GridFS and served here, so the storefront does
 // not hotlink Steam's CDN. The URL is just /api/media/<fileId>.
+/* Direct image upload for avatars and dev covers. The browser sends the file
+   as the raw request body, so there is no multipart dependency; the bytes land
+   in GridFS and the returned /api/media/<id> URL is what the rest of the app
+   stores. */
+router.post('/media', needLogin, express.raw({ type: () => true, limit: '5mb' }), async (req, res) => {
+  try {
+    const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    const ext = IMAGE_TYPES[mime];
+    if (!ext) return res.status(400).json({ error: 'Only PNG, JPEG, WebP or GIF images are allowed.' });
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'The uploaded file is empty.' });
+    if (!looksLikeImage(req.body, mime)) return res.status(400).json({ error: 'The file content does not match its type.' });
+
+    const kind = req.query.kind === 'cover' ? 'cover' : 'avatar';
+    const bucket = getBucket();
+    const filename = `${kind}-${req.session.user._id}-${Date.now()}.${ext}`;
+    const upload = bucket.openUploadStream(filename, {
+      contentType: mime,
+      metadata: { owner: String(req.session.user._id), kind },
+    });
+    upload.end(req.body);
+    await new Promise((resolve, reject) => {
+      upload.on('finish', resolve);
+      upload.on('error', reject);
+    });
+
+    const url = `/api/media/${upload.id}`;
+    if (kind === 'avatar') {
+      await User.updateOne({ _id: req.session.user._id }, { avatar: url });
+      req.session.user.avatar = url;
+    }
+    res.json({ ok: true, url, id: String(upload.id), kind });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Upload failed.' });
+  }
+});
+
 router.get('/media/:id', async (req, res) => {
   try {
     if (!isObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid image id.' });
@@ -1381,6 +1445,9 @@ router.use((req, res) => res.status(404).json({ error: `No API route for ${req.m
 
 // eslint-disable-next-line no-unused-vars
 router.use((err, req, res, next) => {
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Image is too large (max 5 MB).' });
+  }
   if (err && err.name === 'CastError') {
     return res.status(400).json({ error: 'That id is not valid.' });
   }
