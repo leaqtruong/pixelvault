@@ -29,6 +29,7 @@ const userSchema = new mongoose.Schema({
   passwordHash: { type: String, required: true, select: false },
   role: { type: String, enum: ['user', 'developer', 'admin'], default: 'user' },
   avatar: { type: String, default: '' },
+  isBanned: { type: Boolean, default: false },
   cartClearPending: { type: Boolean, default: false },
   bio: { type: String, default: '', maxlength: 500 },
   wallet: { type: Number, default: 0 },

@@ -9,6 +9,7 @@ const Review = require('../models/Review');
 const Post = require('../models/Post');
 const Payment = require('../models/Payment');
 const QrLogin = require('../models/QrLogin');
+const Payout = require('../models/Payout');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const { decryptKey } = require('../lib/keyCrypto');
@@ -115,8 +116,8 @@ const needLogin = async (req, res, next) => {
        an account while that browser still holds a valid cookie. Refresh the
        user from MongoDB on every protected request and clear the cookie when
        the account no longer exists. */
-    const u = await User.findById(req.session.user._id).select('username role email avatar').lean();
-    if (!u) { req.session = null; return res.status(401).json({ error: 'Login required' }); }
+    const u = await User.findById(req.session.user._id).select('username role email avatar isBanned').lean();
+    if (!u || u.isBanned) { req.session = null; return res.status(403).json({ error: u?.isBanned ? 'Account suspended.' : 'Login required' }); }
     req.session.user = { _id: u._id, username: u.username, role: u.role, email: u.email, avatar: u.avatar || '' };
     next();
   } catch (e) { res.status(500).json({ error: 'Login check failed.' }); }
@@ -124,8 +125,8 @@ const needLogin = async (req, res, next) => {
 const needDev = async (req, res, next) => {
   if (!req.session.user) return res.status(401).json({ error: 'Login required' });
   try {
-    const u = await User.findById(req.session.user._id).select('role').lean();
-    if (!u || !['developer', 'admin'].includes(u.role)) return res.status(403).json({ error: 'Developer required' });
+    const u = await User.findById(req.session.user._id).select('role isBanned').lean();
+    if (!u || u.isBanned || !['developer', 'admin'].includes(u.role)) return res.status(403).json({ error: u?.isBanned ? 'Account suspended.' : 'Developer required' });
     req.session.user.role = u.role;
     next();
   } catch (e) { res.status(500).json({ error: 'Authorization check failed.' }); }
@@ -133,8 +134,8 @@ const needDev = async (req, res, next) => {
 const needAdmin = async (req, res, next) => {
   if (!req.session.user) return res.status(401).json({ error: 'Login required' });
   try {
-    const u = await User.findById(req.session.user._id).select('role').lean();
-    if (!u || u.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    const u = await User.findById(req.session.user._id).select('role isBanned').lean();
+    if (!u || u.isBanned || u.role !== 'admin') return res.status(403).json({ error: u?.isBanned ? 'Account suspended.' : 'Admin required' });
     req.session.user.role = u.role;
     next();
   } catch (e) { res.status(500).json({ error: 'Authorization check failed.' }); }
@@ -176,6 +177,7 @@ router.post('/auth/login', async (req, res) => {
       loginLimiter.recordFailure(req, email);
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
+    if (user.isBanned) return res.status(403).json({ error: 'Account suspended. Contact support.' });
     loginLimiter.clear(req, email);
     req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email, avatar: user.avatar || '' };
     res.json({ user: me(req) });
@@ -184,8 +186,8 @@ router.post('/auth/login', async (req, res) => {
 router.post('/auth/logout', (req, res) => { req.session = null; res.json({ ok: true }); });
 router.get('/auth/me', async (req, res) => {
   if (!req.session.user) return res.json({ user: null });
-  const u = await User.findById(req.session.user._id).select('username role email avatar').lean().catch(() => null);
-  if (!u) { req.session = null; return res.json({ user: null }); }
+  const u = await User.findById(req.session.user._id).select('username role email avatar isBanned').lean().catch(() => null);
+  if (!u || u.isBanned) { req.session = null; return res.json({ user: null, banned: !!u?.isBanned }); }
   req.session.user = { _id: u._id, username: u.username, role: u.role, email: u.email, avatar: u.avatar || '' };
   res.json({ user: me(req) });
 });
@@ -442,6 +444,7 @@ router.post('/cart/add', async (req, res) => {
     if (!t || t.status !== 'published') return res.status(404).json({ error: 'Collectible not found' });
     const key = `toy:${toyId}`;
     const found = items.find((i) => i.key === key);
+    if (!found && items.length >= 20) return res.status(400).json({ error: 'Cart is full (20 items). Checkout or remove an item.' });
     const nextQty = (found ? found.qty : 0) + qtyWanted;
     if (nextQty > 9) return res.status(400).json({ error: 'At most 9 units of one item.' });
     if (nextQty > (t.stock || 0)) return res.status(400).json({ error: `Only ${t.stock} left in stock.` });
@@ -453,6 +456,7 @@ router.post('/cart/add', async (req, res) => {
   if (!g) return res.status(404).json({ error: 'Game not found' });
   const key = `game:${gameId}:${edition}`;
   const found = items.find((i) => i.key === key);
+  if (!found && items.length >= 20) return res.status(400).json({ error: 'Cart is full (20 items). Checkout or remove an item.' });
   const nextQty = (found ? found.qty : 0) + qtyWanted;
   if (nextQty > 9) return res.status(400).json({ error: 'At most 9 units of one item.' });
   if (edition === 'physical' && (!g.physical.enabled || g.physical.stock < nextQty)) {
@@ -1185,10 +1189,12 @@ router.post('/dev/new', needDev, async (req, res) => {
 
 router.post('/dev/payout', needDev, async (req, res) => {
   const meU = await User.findById(req.session.user._id);
-  if ((meU.devProfile?.balanceOwed || 0) < 10) return res.status(400).json({ error: 'Minimum $10 payout.' });
+  const amount = Number(meU.devProfile?.balanceOwed || 0);
+  if (amount < 10) return res.status(400).json({ error: 'Minimum $10 payout.' });
+  await Payout.create({ developer: meU._id, amount });
   meU.devProfile.balanceOwed = 0;
   await meU.save();
-  res.json({ ok: true });
+  res.json({ ok: true, amount, status: 'pending' });
 });
 
 router.post('/dev/:id/edit', needDev, async (req, res) => {
@@ -1293,23 +1299,55 @@ router.post('/community/p/:id/reply', needLogin, async (req, res) => {
 
 // ---------- admin ----------
 router.get('/admin', needAdmin, async (req, res) => {
-  const [orders, posts, reviews, users, games, toys, payments, devRequests, userCount, gameCount, toyCount, revenueAgg] = await Promise.all([
+  const [orders, posts, reviews, users, games, toys, payments, devRequests, payouts, spendRows, userCount, gameCount, toyCount, revenueAgg] = await Promise.all([
     Order.find({}).populate('user', 'username email').sort({ createdAt: -1 }).limit(100).lean(),
     Post.find({}).populate('author', 'username').sort({ createdAt: -1 }).limit(60).lean(),
     Review.find({}).populate('user', 'username').populate('game', 'title slug').sort({ createdAt: -1 }).limit(60).lean(),
-    User.find({}).select('username email role createdAt').sort({ createdAt: -1 }).limit(200).lean(),
-    Game.find({}).populate('developer', 'username').select('title slug price discountPct status stats developer createdAt').sort({ createdAt: -1 }).limit(300).lean(),
-    Toy.find({}).select('title slug price stock stats status seller').sort({ title: 1 }).limit(300).lean(),
+    User.find({}).select('username email role createdAt isBanned').sort({ createdAt: -1 }).limit(200).lean(),
+    Game.find({}).populate('developer', 'username').select('title slug price discountPct status stats developer featured coverImage genres tags description createdAt').sort({ createdAt: -1 }).limit(300).lean(),
+    Toy.find({}).select('title slug price stock stats status seller category brand coverImage').sort({ title: 1 }).limit(300).lean(),
     Payment.find({}).populate('user', 'username').select('orderId gatewayOrderId user order amount currency provider live status responseCode createdAt settledAt').sort({ createdAt: -1 }).limit(100).lean(),
     User.find({ role: 'user', 'devProfile.studioName': { $exists: true, $ne: '' }, 'devProfile.verified': { $ne: true } })
       .select('username email devProfile createdAt').sort({ 'devProfile.requestedAt': 1, createdAt: 1 }).lean(),
+    Payout.find({}).populate('developer', 'username email').sort({ requestedAt: -1 }).limit(100).lean(),
+    Order.aggregate([
+      { $match: { status: { $in: ['paid', 'fulfilled', 'partially_shipped', 'shipped', 'delivered'] } } },
+      { $group: { _id: '$user', orders: { $sum: 1 }, spent: { $sum: '$grandTotal' } } },
+    ]),
     User.countDocuments(),
     Game.countDocuments(),
     Toy.countDocuments(),
     Order.aggregate([{ $match: { status: { $in: ['paid', 'fulfilled', 'partially_shipped', 'shipped', 'delivered'] } } }, { $group: { _id: null, sum: { $sum: '$grandTotal' } } }]),
   ]);
-  const stats = { users: userCount, games: gameCount, toys: toyCount, revenue: revenueAgg[0]?.sum || 0, devRequests: devRequests.length };
-  res.json({ orders, posts, reviews, users, games, toys, payments, devRequests, stats });
+  const spendById = new Map(spendRows.map((r) => [String(r._id), r]));
+  const usersWithSpend = users.map((u) => ({
+    ...u,
+    orders: spendById.get(String(u._id))?.orders || 0,
+    spent: spendById.get(String(u._id))?.spent || 0,
+  }));
+  const stats = {
+    users: userCount, games: gameCount, toys: toyCount,
+    revenue: revenueAgg[0]?.sum || 0,
+    devRequests: devRequests.length,
+    pendingPayouts: payouts.filter((p) => p.status === 'pending').length,
+  };
+  res.json({ orders, posts, reviews, users: usersWithSpend, games, toys, payments, devRequests, payouts, stats });
+});
+
+router.get('/admin/users/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
+  const user = await User.findById(req.params.id)
+    .select('username email role isBanned createdAt library wishlist toyWishlist')
+    .populate('library.game', 'title slug coverImage price')
+    .populate('wishlist', 'title slug coverImage')
+    .populate('toyWishlist', 'title slug coverImage')
+    .lean();
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const orders = await Order.find({ user: user._id }).sort({ createdAt: -1 }).limit(20).lean();
+  const spent = orders
+    .filter((o) => ['paid', 'fulfilled', 'partially_shipped', 'shipped', 'delivered'].includes(o.status))
+    .reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+  res.json({ user, orders, spent });
 });
 
 router.post('/admin/users/:id/role', needAdmin, async (req, res) => {
@@ -1436,6 +1474,184 @@ router.post('/admin/orders/:id/refund', needAdmin, async (req, res) => {
   order.refundedAt = new Date();
   await order.save();
   res.json({ ok: true, status: order.status });
+});
+
+router.delete('/admin/games/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Game not found' });
+  const g = await Game.findById(req.params.id);
+  if (!g) return res.status(404).json({ error: 'Game not found' });
+  /* Orders keep their title/price snapshot, so historical receipts survive.
+     Keys, reviews, forum threads and user shelves must go with the title. */
+  await Promise.all([
+    GameKey.deleteMany({ game: g._id }),
+    Review.deleteMany({ game: g._id }),
+    Post.deleteMany({ game: g._id }),
+    User.updateMany({}, { $pull: { wishlist: g._id, library: { game: g._id } } }),
+  ]);
+  await Game.deleteOne({ _id: g._id });
+  res.json({ ok: true });
+});
+
+router.delete('/admin/toys/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Toy not found' });
+  const t = await Toy.findById(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Toy not found' });
+  await User.updateMany({}, { $pull: { toyWishlist: t._id, toyLibrary: { toy: t._id } } });
+  await Toy.deleteOne({ _id: t._id });
+  res.json({ ok: true });
+});
+
+/* ---------- admin catalog + owner controls ---------- */
+function splitList(v, fallback = '') {
+  const rows = Array.isArray(v) ? v : String(v || '').split(',');
+  const out = rows.map((s) => String(s).trim()).filter(Boolean).slice(0, 20);
+  if (!out.length && fallback) out.push(fallback);
+  return out;
+}
+
+router.post('/admin/games', needAdmin, async (req, res) => {
+  try {
+    const b = req.body;
+    if (!b.title || b.price === undefined) return res.status(400).json({ error: 'Title and price are required.' });
+    const game = await Game.create({
+      title: String(b.title).slice(0, 120),
+      tagline: String(b.tagline || '').slice(0, 200),
+      description: String(b.description || '').slice(0, 5000),
+      developer: req.session.user._id,
+      studioName: b.studioName || 'PixelVault',
+      genres: splitList(b.genres, 'Indie'),
+      tags: splitList(b.tags),
+      platforms: ['Windows'],
+      coverImage: String(b.coverImage || ''),
+      price: Math.max(0, Number(b.price) || 0),
+      discountPct: Math.min(90, Math.max(0, Number(b.discountPct) || 0)),
+      featured: !!b.featured,
+      status: ['published', 'draft', 'delisted'].includes(b.status) ? b.status : 'published',
+      releaseDate: new Date(),
+    });
+    res.json({ ok: true, game: { _id: game._id, title: game.title, slug: game.slug } });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post('/admin/games/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Game not found' });
+  const g = await Game.findById(req.params.id);
+  if (!g) return res.status(404).json({ error: 'Game not found' });
+  const b = req.body;
+  if (b.title !== undefined) g.title = String(b.title).slice(0, 120);
+  if (b.tagline !== undefined) g.tagline = String(b.tagline).slice(0, 200);
+  if (b.description !== undefined) g.description = String(b.description).slice(0, 5000);
+  if (b.price !== undefined) g.price = Math.max(0, Number(b.price) || 0);
+  if (b.discountPct !== undefined) g.discountPct = Math.min(90, Math.max(0, Number(b.discountPct) || 0));
+  if (b.coverImage !== undefined) g.coverImage = String(b.coverImage);
+  if (b.genres !== undefined) g.genres = splitList(b.genres, 'Indie');
+  if (b.tags !== undefined) g.tags = splitList(b.tags);
+  if (b.status !== undefined && ['published', 'draft', 'delisted'].includes(b.status)) g.status = b.status;
+  if (b.featured !== undefined) g.featured = !!b.featured;
+  await g.save();
+  res.json({ ok: true, game: { _id: g._id, title: g.title, slug: g.slug } });
+});
+
+router.post('/admin/toys', needAdmin, async (req, res) => {
+  try {
+    const b = req.body;
+    if (!b.title || b.price === undefined) return res.status(400).json({ error: 'Title and price are required.' });
+    const toy = await Toy.create({
+      title: String(b.title).slice(0, 120),
+      brand: String(b.brand || ''),
+      category: ['Plush', 'Figure', 'Statue', 'Apparel', 'Book', 'Music', 'Pins', 'Other'].includes(b.category) ? b.category : 'Other',
+      price: Math.max(0, Number(b.price) || 0),
+      stock: Math.max(0, Math.min(9999, Number(b.stock) || 0)),
+      weightLb: Math.max(0.1, Number(b.weightLb) || 1),
+      description: String(b.description || ''),
+      coverImage: String(b.coverImage || ''),
+      status: 'published',
+      seller: null,
+    });
+    res.json({ ok: true, toy: { _id: toy._id, title: toy.title, slug: toy.slug } });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.get('/admin/toys/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Toy not found' });
+  const toy = await Toy.findById(req.params.id).lean();
+  if (!toy) return res.status(404).json({ error: 'Toy not found' });
+  const orders = await Order.find({ 'items.toy': toy._id }).sort({ createdAt: -1 }).limit(10).lean();
+  res.json({ toy, orders });
+});
+
+router.post('/admin/toys/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Toy not found' });
+  const t = await Toy.findById(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Toy not found' });
+  const b = req.body;
+  if (b.title !== undefined) t.title = String(b.title).slice(0, 120);
+  if (b.brand !== undefined) t.brand = String(b.brand).slice(0, 80);
+  if (b.category !== undefined && ['Plush', 'Figure', 'Statue', 'Apparel', 'Book', 'Music', 'Pins', 'Other'].includes(b.category)) t.category = b.category;
+  if (b.price !== undefined) t.price = Math.max(0, Number(b.price) || 0);
+  if (b.stock !== undefined) t.stock = Math.max(0, Math.min(9999, Number(b.stock) || 0));
+  if (b.weightLb !== undefined) t.weightLb = Math.max(0.1, Number(b.weightLb) || 1);
+  if (b.description !== undefined) t.description = String(b.description).slice(0, 4000);
+  if (b.coverImage !== undefined) t.coverImage = String(b.coverImage);
+  if (b.status !== undefined && ['published', 'hidden', 'soldout'].includes(b.status)) t.status = b.status;
+  await t.save();
+  res.json({ ok: true, toy: { _id: t._id, title: t.title, slug: t.slug } });
+});
+
+router.post('/admin/users/:id/ban', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
+  const u = await User.findById(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  if (u.role === 'admin') return res.status(400).json({ error: 'Cannot suspend an admin.' });
+  u.isBanned = !u.isBanned;
+  await u.save();
+  res.json({ ok: true, banned: u.isBanned });
+});
+
+router.post('/admin/users/:id/password', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
+  const password = String(req.body.password || '');
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  const bcrypt = require('bcryptjs');
+  const passwordHash = await bcrypt.hash(password, 10);
+  const u = await User.findByIdAndUpdate(req.params.id, { passwordHash });
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  res.json({ ok: true });
+});
+
+router.post('/admin/orders/:id/tracking', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Order not found' });
+  const o = await Order.findById(req.params.id);
+  if (!o) return res.status(404).json({ error: 'Order not found' });
+  if (!o.shipment) return res.status(400).json({ error: 'Digital order — there is nothing to ship.' });
+  o.shipment.carrier = String(req.body.carrier || '').slice(0, 60);
+  o.shipment.tracking = String(req.body.tracking || '').slice(0, 80);
+  await o.save();
+  res.json({ ok: true, shipment: o.shipment });
+});
+
+router.post('/admin/payouts/:id/pay', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Payout not found' });
+  const p = await Payout.findById(req.params.id);
+  if (!p) return res.status(404).json({ error: 'Payout not found' });
+  if (p.status !== 'pending') return res.status(400).json({ error: `Payout is already ${p.status}.` });
+  p.status = 'paid';
+  p.paidAt = new Date();
+  p.note = String(req.body.note || '').slice(0, 200);
+  await p.save();
+  res.json({ ok: true });
+});
+
+router.post('/admin/payouts/:id/reject', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Payout not found' });
+  const p = await Payout.findById(req.params.id);
+  if (!p) return res.status(404).json({ error: 'Payout not found' });
+  if (p.status !== 'pending') return res.status(400).json({ error: `Payout is already ${p.status}.` });
+  p.status = 'rejected';
+  p.note = String(req.body.note || '').slice(0, 200);
+  await p.save();
+  await User.updateOne({ _id: p.developer }, { $inc: { 'devProfile.balanceOwed': p.amount } });
+  res.json({ ok: true });
 });
 
 /* packing -> shipped -> delivered. The buyer's order page reads the same

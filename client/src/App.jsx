@@ -10,6 +10,7 @@ const laz = (load, name) => lazy(() => load().then((m) => ({ default: m[name] })
 const shop = () => import('./pages-shop.jsx');
 const trade = () => import('./pages-trade.jsx');
 const users = () => import('./pages-user.jsx');
+const admin = () => import('./admin/Admin.jsx');
 const Home = laz(shop, 'Home');
 const Store = laz(shop, 'Store');
 const GameDetail = laz(shop, 'GameDetail');
@@ -36,7 +37,7 @@ const CommunityNew = laz(users, 'CommunityNew');
 const PostDetail = laz(users, 'PostDetail');
 const Settings = laz(users, 'Settings');
 const Support = laz(users, 'Support');
-const Admin = laz(users, 'Admin');
+const Admin = laz(admin, 'Admin');
 
 /* A single missing or unexpected field used to unmount the whole tree and
    leave a black page with no clue why. Catch it here and say what happened. */
