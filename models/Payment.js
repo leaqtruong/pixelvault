@@ -41,7 +41,7 @@ paymentSchema.index({ gatewayOrderId: 1 });
 paymentSchema.statics.claim = function (orderId, patch) {
   return this.findOneAndUpdate(
     { orderId, status: 'pending' },
-    { $set: { status: patch.status, responseCode: patch.responseCode || '', gatewayTransactionNo: patch.gatewayTransactionNo || '', rawCallback: patch.rawCallback || {}, settledAt: patch.status === 'pending' ? undefined : new Date(), failureReason: patch.failureReason || '' } },
+    { $set: { status: patch.status, responseCode: patch.responseCode || '', gatewayTransactionNo: patch.gatewayTransactionNo || '', rawCallback: patch.rawCallback || {}, settledAt: patch.status === 'success' ? new Date() : undefined, failureReason: patch.failureReason || '' } },
     { new: true },
   );
 };

@@ -1,8 +1,11 @@
 export async function api(path, opts = {}) {
   const r = await fetch('/api' + path, {
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
     ...opts,
+    headers: {
+      ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(opts.headers || {}),
+    },
     ...(opts.body && typeof opts.body !== 'string' ? { body: JSON.stringify(opts.body) } : {}),
   });
   const data = await r.json().catch(() => ({}));

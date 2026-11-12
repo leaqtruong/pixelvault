@@ -58,7 +58,14 @@ async function call(method, path, body) {
     redirect: 'manual',
   });
   const setc = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
-  for (const c of setc) cookie = c.split(';')[0];
+  /* cookie-session sets two cookies (payload + signature). Keep both, replacing
+     only the one being updated; keeping just the last one drops the payload. */
+  for (const c of setc) {
+    const pair = c.split(';')[0];
+    const key = pair.split('=')[0];
+    const jar = cookie ? cookie.split('; ') : [];
+    cookie = jar.filter((x) => !x.startsWith(key + '=')).concat(pair).join('; ');
+  }
   const text = await res.text();
   let data = null;
   try { data = JSON.parse(text); } catch { data = text; }

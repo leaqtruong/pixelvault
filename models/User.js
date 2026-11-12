@@ -29,6 +29,7 @@ const userSchema = new mongoose.Schema({
   passwordHash: { type: String, required: true, select: false },
   role: { type: String, enum: ['user', 'developer', 'admin'], default: 'user' },
   avatar: { type: String, default: '' },
+  cartClearPending: { type: Boolean, default: false },
   bio: { type: String, default: '', maxlength: 500 },
   wallet: { type: Number, default: 0 },
   wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Game' }],
@@ -51,7 +52,8 @@ const userSchema = new mongoose.Schema({
     website: String,
     payoutEmail: String,
     verified: { type: Boolean, default: false },
-    balanceOwed: { type: Number, default: 0 }
+    balanceOwed: { type: Number, default: 0 },
+    requestedAt: { type: Date, default: null }
   },
   preferences: {
     favoriteGenres: [String],

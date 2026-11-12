@@ -169,6 +169,13 @@ export function Checkout() {
 /* Where the gateway sends the shopper back to. It does not trust the query
    string: it hands the parameters to the store, which checks the signature and
    settles the payment, then this page reports what actually happened. */
+const REASON = {
+  'invalid-signature': 'The gateway signature did not match. The request was rejected and nothing was delivered.',
+  'unknown-payment': 'No matching payment was found for this reference.',
+  'order-missing': 'The order behind this payment no longer exists.',
+  'already-settled': 'This payment had already been processed.',
+};
+
 export function PaymentReturn() {
   const [sp] = useSearchParams();
   const [d, setD] = useState({ state: 'checking' });
@@ -234,13 +241,6 @@ export function PaymentReturn() {
     </>
   );
 }
-
-const REASON = {
-  'invalid-signature': 'The gateway signature did not match. The request was rejected and nothing was delivered.',
-  'unknown-payment': 'No matching payment was found for this reference.',
-  'order-missing': 'The order behind this payment no longer exists.',
-  'already-settled': 'This payment had already been processed.',
-};
 
 export function Orders() {
   const [d, setD] = useState(null);
@@ -331,12 +331,13 @@ export function OrderDetail() {
 
 export function Library() {
   const [sp] = useSearchParams();
-  const [d, setD] = useState(null);
+  const [d, setD] = useState(undefined);
   const [tab, setTab] = useState(() => sp.get('tab') || 'games');
   const [q, setQ] = useState('');
   const toast = useToast();
   useEffect(() => { api('/library').then(setD).catch(() => setD(null)); }, []);
-  if (!d) return <div className="empty"><h3>Your library is private</h3><p className="muted">Login to see games you own, keys and collectibles.</p><Link className="cta-btn" to="/login">Login</Link></div>;
+  if (d === undefined) return <p className="muted">Loading…</p>;
+  if (d === null) return <div className="empty"><h3>Your library is private</h3><p className="muted">Login to see games you own, keys and collectibles.</p><Link className="cta-btn" to="/login">Login</Link></div>;
   const { user, keysByGame, plainById } = d;
   const play = async (gid) => { await api(`/library/play/${gid}`, { method: 'POST' }); setD({ ...d, user: (await api('/library')).user }); };
   const copy = async (text) => {

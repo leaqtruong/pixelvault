@@ -10,7 +10,7 @@ PixelVault là cửa hàng game số + merch vật lý, gồm React SPA, Node/Ex
 
 - Hệ quản trị: **MongoDB**, truy cập qua **Mongoose** (database `pixelvault`).
 - Dữ liệu nghiệp vụ nằm trong 9 collection: `users`, `games`, `toys`, `gamekeys`, `orders`, `payments`, `posts`, `reviews`, `qrlogins`.
-- Ngoài ra: `sessions` (phiên đăng nhập lưu trong MongoDB) và GridFS `images.files` / `images.chunks` (ảnh game, toy, mod cũ).
+- Ngoài ra: GridFS `images.files` / `images.chunks` (ảnh game, toy).
 - Quan hệ dùng `ObjectId` + `ref`; dữ liệu con (thư viện, địa chỉ, item đơn hàng, reply) được nhúng trực tiếp trong document cha.
 
 ## 1.2 Biểu đồ class
@@ -213,7 +213,6 @@ classDiagram
 | `gamekeys` | 0 | Key chỉ sinh khi đơn được fulfilment |
 | `payments` | 0 | Chưa có giao dịch gateway |
 | `qrlogins` | 0 | Token QR dùng một lần, tự hết hạn |
-| `sessions` | 25 | Phiên đăng nhập đang lưu trong MongoDB |
 | `images.files` | 394 | Ảnh trong GridFS |
 | `images.chunks` | 744 | Các chunk nhị phân của ảnh |
 
@@ -319,7 +318,6 @@ classDiagram
 | reviews | `game+user` (unique) | mỗi người 1 review/game |
 | posts | `board` | lọc theo board |
 | qrlogins | `token` (unique), TTL 90s | QR dùng một lần |
-| sessions | TTL index | tự xoá phiên hết hạn |
 
 ## 1.6 Nguồn dữ liệu
 
@@ -346,7 +344,7 @@ Mỗi mục gồm **Giao diện** (route + ảnh chụp) và **Luồng xử lý*
 2. Server chuẩn hoá email, tìm `User` trong MongoDB.
 3. Đăng ký: hash mật khẩu bằng **bcrypt** (10 rounds), tạo user với `role: 'user'`.
 4. Đăng nhập: `bcrypt.compare`; sai 5 lần / 15 phút cho cùng IP+email thì bị chặn (`lib/loginLimiter.js`).
-5. Thành công: ghi `req.session.user = { _id, username, role, email }`; session lưu trong MongoDB (`sessions`).
+5. Thành công: ghi `req.session.user = { _id, username, role, email }`; session nằm trong cookie HttpOnly có chữ ký, không lưu MongoDB.
 6. Client nhận `{ user }`, cập nhật state `me`, chuyển về trang trước.
 7. Google: `POST /api/auth/google` nhận ID token, xác minh với `oauth2.googleapis.com/tokeninfo`, kiểm tra `aud`, tạo/tìm user rồi mở session.
 

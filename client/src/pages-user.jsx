@@ -35,7 +35,7 @@ export function Login({ onLogin }) {
       } catch {}
     };
     document.body.appendChild(s);
-  }, [googleId]);
+  }, [googleId, onLogin, nav]);
   const startQr = async () => {
     try {
       const r = await api('/qrlogin/request', { method: 'POST' });
@@ -96,7 +96,7 @@ export function Login({ onLogin }) {
       ) : (
         <p className="tiny">Google login is not configured on this server. See README to add GOOGLE_CLIENT_ID.</p>
       )}
-      <p className="tiny">No account? <Link to="/register">Join free</Link> · Demo: gamer@vault.gg / password123</p>
+      <p className="tiny">No account? <Link to="/register">Join free</Link> · Demo: gamer@vault.gg / password123 · Admin: admin@pixelvault.gg / password123</p>
     </div>
   );
 }
@@ -191,7 +191,7 @@ export function DevApply() {
   const submit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    try { await api('/dev/apply', { method: 'POST', body: { studioName: f.get('studioName'), website: f.get('website'), payoutEmail: f.get('payoutEmail') } }); setMsg('You are now a developer!'); }
+    try { await api('/dev/apply', { method: 'POST', body: { studioName: f.get('studioName'), website: f.get('website'), payoutEmail: f.get('payoutEmail') } }); setMsg('Application submitted — an admin will review it.'); }
     catch (er) { setMsg(er.message); }
   };
   return <div className="auth-box"><h1>Become a developer</h1>
@@ -268,7 +268,11 @@ export function Dev() {
   const [d, setD] = useState(null);
   const [editing, setEditing] = useState(null);
   const toast = useToast();
-  const load = () => api('/dev').then(setD).catch(() => setD({ err: 1 }));
+  const load = () => api('/dev').then(setD).catch(async () => {
+    let pending = false;
+    try { pending = !!(await api('/dev/status')).pending; } catch {}
+    setD({ err: 1, pending });
+  });
   useEffect(() => { load(); }, []);
   const payout = async () => {
     try { await api('/dev/payout', { method: 'POST' }); setD(await api('/dev')); toast('Payout requested — balance cleared'); }
@@ -283,7 +287,7 @@ export function Dev() {
     } catch (er) { toast(er.message, 'err'); }
   };
   if (!d) return <p className="muted">Loading…</p>;
-  if (d.err) return <p className="muted">Developer account required. <Link to="/dev/apply">Become a developer</Link></p>;
+  if (d.err) return <p className="muted">{d.pending ? 'Developer application pending admin approval.' : <>Developer account required. <Link to="/dev/apply">Become a developer</Link></>}</p>;
   // Only physical stock can run low. Digital keys are issued on payment, so
   // there is no level to warn about.
   const lowBox = d.games.filter((g) => g.physical?.enabled && (g.physical?.stock || 0) < 5);
@@ -298,8 +302,7 @@ export function Dev() {
     </div>
     <div className="alert-bar">
       {d.balance < 10 && <div className="alert-info">Payout unlocks at <b>$10.00</b> — balance is <b>${d.balance.toFixed(2)}</b>.</div>}
-      {!!lowBox.length && <div className="alert-warn"><b>{lowBox.length} title{lowBox.length > 1 ? 's' : ''} low on physical stock.</b> Physical editions cannot ship until you restock. <Link to="/dev/toys">Restock</Link></div>}
-      {!!lowBox.length && <div className="alert-warn"><b>{lowBox.length} box edition{lowBox.length > 1 ? 's' : ''} low on stock</b> — under 5 units left.</div>}
+      {!!lowBox.length && <div className="alert-warn"><b>{lowBox.length} title{lowBox.length > 1 ? 's' : ''} low on physical stock</b> — under 5 boxed units left. Physical editions cannot ship until you restock. <Link to="/dev/toys">Restock</Link></div>}
     </div>
     <div className="kpi-row">
       <div className="kpi"><span>Gross sales</span><b>${d.gross.toFixed(2)}</b></div>
@@ -545,30 +548,41 @@ export function CommunityNew() {
 export function PostDetail() {
   const { id } = useParams();
   const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
   useEffect(() => { api('/community/p/' + id).then(setD).catch(() => setD({ err: 1 })); }, [id]);
   if (!d) return <p className="muted">Loading…</p>;
   if (d.err) return <p className="err">Not found.</p>;
   const reply = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    await api(`/community/p/${id}/reply`, { method: 'POST', body: { text: f.get('text') } });
-    e.target.reset(); setD(await api('/community/p/' + id));
+    try {
+      await api(`/community/p/${id}/reply`, { method: 'POST', body: { text: f.get('text') } });
+      e.target.reset();
+      setD(await api('/community/p/' + id));
+      setErr('');
+    } catch (er) { setErr(er.message); }
   };
   return (<><h1>{d.post.title}</h1><p className="tiny">@{d.post.author?.username} · {d.post.board}</p>
     <div className="panel"><p>{d.post.body}</p></div>
     <h2>Replies ({(d.post.replies || []).length})</h2>
     {(d.post.replies || []).map((r, ix) => <div key={ix} className="panel"><b>@{r.user?.username}</b><p>{r.text}</p></div>)}
-    <form className="panel" onSubmit={reply} style={{ display: 'grid', gap: 8 }}><textarea name="text" placeholder="Reply…" required /><button className="ghost-btn">Reply</button></form></>);
+    <form className="panel" onSubmit={reply} style={{ display: 'grid', gap: 8 }}><textarea name="text" placeholder="Reply…" required /><button className="ghost-btn">Reply</button></form>
+    {err && <p className="err">{err}</p>}</>);
 }
 
 export function Admin() {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
-  const [tab, setTab] = useState('orders');
+  const [tab, setTab] = useState('overview');
   const toast = useToast();
-  const load = () => api('/admin').then((r) => { setD(r); setErr(''); }).catch((e) => { setErr(e.message); setD({ orders: [], posts: [], reviews: [] }); });
+  const load = () => api('/admin').then((r) => { setD(r); setErr(''); }).catch((e) => {
+    setErr(e.message);
+    setD({ orders: [], posts: [], reviews: [], users: [], games: [], toys: [], payments: [], devRequests: [], stats: {} });
+  });
   useEffect(() => { load(); }, []);
   if (!d) return <p className="muted">Loading…</p>;
+  if (err) return <p className="err">{err}</p>;
+
   const advance = async (o) => {
     try { const r = await api('/admin/orders/' + o._id + '/advance', { method: 'POST' }); toast('Shipment ' + r.shipment.status); load(); }
     catch (e) { toast(e.message, 'err'); }
@@ -583,26 +597,174 @@ export function Admin() {
     try { await api('/admin/reviews/' + r._id, { method: 'DELETE' }); toast('Review deleted'); load(); }
     catch (e) { toast(e.message, 'err'); }
   };
-  if (err) return <p className="err">{err}</p>;
-  const paid = d.orders.filter((o) => ['paid', 'shipped', 'delivered'].includes(o.status));
-  const revenue = paid.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+  const setRole = async (u, role) => {
+    try { await api(`/admin/users/${u._id}/role`, { method: 'POST', body: { role } }); toast(`@${u.username} is now ${role}`); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const setGameStatus = async (g, status) => {
+    try { await api(`/admin/games/${g._id}/status`, { method: 'POST', body: { status } }); toast(`${g.title} → ${status}`); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const saveToy = async (t, price, stock) => {
+    try { await api(`/dev/toys/${t._id}/restock`, { method: 'POST', body: { price, stock } }); toast(`${t.title} updated`); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const approveDev = async (u) => {
+    try { await api(`/admin/devs/${u._id}/approve`, { method: 'POST' }); toast(`@${u.username} approved`); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const rejectDev = async (u) => {
+    if (!window.confirm(`Reject @${u.username}'s developer application?`)) return;
+    try { await api(`/admin/devs/${u._id}/reject`, { method: 'POST' }); toast('Application rejected'); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const createUser = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    try {
+      await api('/admin/users', { method: 'POST', body: { username: f.get('username'), email: f.get('email'), password: f.get('password'), role: f.get('role') } });
+      e.target.reset(); toast('Account created'); load();
+    } catch (er) { toast(er.message, 'err'); }
+  };
+  const delUser = async (u) => {
+    if (!window.confirm(`Delete @${u.username}? Their posts and reviews are removed too.`)) return;
+    try { await api(`/admin/users/${u._id}`, { method: 'DELETE' }); toast('Account deleted'); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const grantGame = async (u, gameId) => {
+    if (!gameId) return;
+    try { await api(`/admin/users/${u._id}/grant-game`, { method: 'POST', body: { gameId } }); toast(`Game granted to @${u.username}`); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+  const refund = async (o) => {
+    if (!window.confirm(`Refund order #${String(o._id).slice(-6).toUpperCase()}? Keys will be revoked and stock restored.`)) return;
+    try { await api(`/admin/orders/${o._id}/refund`, { method: 'POST' }); toast('Order refunded'); load(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+
+  const stats = d.stats || {};
+  const revenue = Number(stats.revenue || 0);
   const toShip = d.orders.filter((o) => o.shipment && ['packing', 'shipped'].includes(o.shipment.status)).length;
-  const tabs = [['orders', 'Orders (' + d.orders.length + ')'], ['posts', 'Posts (' + d.posts.length + ')'], ['reviews', 'Reviews (' + d.reviews.length + ')']];
+  const tabs = [
+    ['overview', 'Overview'],
+    ['users', `Users (${stats.users ?? d.users.length})`],
+    ['games', `Games (${stats.games ?? d.games.length})`],
+    ['toys', `Toys (${stats.toys ?? d.toys.length})`],
+    ['orders', `Orders (${d.orders.length})`],
+    ['payments', `Payments (${d.payments.length})`],
+    ['devs', `Dev requests (${d.devRequests.length})`],
+    ['posts', `Posts (${d.posts.length})`],
+    ['reviews', `Reviews (${d.reviews.length})`],
+  ];
+
   return (<>
     <div className="sec-head" style={{ marginTop: 0 }}>
       <span className="ix">Admin</span>
       <h1>Store desk</h1>
-      <span className="tiny" style={{ marginLeft: 'auto' }}>orders, shipments and content</span>
+      <span className="tiny" style={{ marginLeft: 'auto' }}>owner controls · users, catalog, orders, payments, developers</span>
     </div>
     <div className="kpi-row">
-      <div className="kpi"><span>Orders</span><b>{d.orders.length}</b></div>
+      <div className="kpi"><span>Users</span><b>{stats.users ?? d.users.length}</b></div>
+      <div className="kpi"><span>Games</span><b>{stats.games ?? d.games.length}</b></div>
+      <div className="kpi"><span>Toys</span><b>{stats.toys ?? d.toys.length}</b></div>
       <div className="kpi"><span>Paid revenue</span><b>${revenue.toFixed(2)}</b></div>
       <div className="kpi"><span>To ship</span><b>{toShip}</b></div>
-      <div className="kpi"><span>Posts</span><b>{d.posts.length}</b></div>
     </div>
     <div className="chips">
       {tabs.map(([k, label]) => <button key={k} className={'chip' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{label}</button>)}
     </div>
+
+    {tab === 'overview' && (
+      <div className="two-col">
+        <div className="panel">
+          <h3>Needs attention</h3>
+          <p>Pending developer requests: <b>{d.devRequests.length}</b></p>
+          <p>Orders waiting to ship: <b>{toShip}</b></p>
+          <p>Delisted games: <b>{d.games.filter((g) => g.status === 'delisted').length}</b></p>
+          <p>Low-stock toys: <b>{d.toys.filter((t) => (t.stock || 0) <= 3).length}</b></p>
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="ghost-btn sm" onClick={() => setTab('devs')}>Review developers</button>
+            <button className="ghost-btn sm" onClick={() => setTab('orders')}>Fulfil orders</button>
+          </div>
+        </div>
+        <div className="panel">
+          <h3>Recent orders</h3>
+          {d.orders.slice(0, 5).map((o) => (
+            <p key={o._id} className="tiny">
+              <Link to={'/orders/' + o._id}>#{String(o._id).slice(-6).toUpperCase()}</Link>
+              {' · '}@{o.user?.username || '?'} · ${Number(o.grandTotal || 0).toFixed(2)} · {o.status}
+            </p>
+          ))}
+          {!d.orders.length && <p className="muted">No orders yet.</p>}
+        </div>
+      </div>
+    )}
+
+    {tab === 'users' && (<>
+      <form className="panel" onSubmit={createUser} style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+        <h3>Create account</h3>
+        <div className="row"><input name="username" placeholder="Username" required /><input name="email" type="email" placeholder="Email" required /></div>
+        <div className="row">
+          <input name="password" type="password" placeholder="Password" required />
+          <select name="role"><option value="user">user</option><option value="developer">developer</option><option value="admin">admin</option></select>
+        </div>
+        <button className="cta-btn sm">Create account</button>
+      </form>
+      <table className="ptable">
+        <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
+        <tbody>{d.users.map((u) => (
+          <tr key={u._id}>
+            <td className="t-name">@{u.username}</td>
+            <td className="t-genre">{u.email}</td>
+            <td>
+              <select defaultValue={u.role} onChange={(e) => setRole(u, e.target.value)} aria-label={`Role for ${u.username}`}>
+                <option value="user">user</option>
+                <option value="developer">developer</option>
+                <option value="admin">admin</option>
+              </select>
+            </td>
+            <td className="t-genre">{new Date(u.createdAt).toLocaleDateString()}</td>
+            <td>
+              <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+                <select defaultValue="" onChange={(e) => { grantGame(u, e.target.value); e.target.value = ''; }} aria-label={`Grant game to ${u.username}`}>
+                  <option value="">Grant game…</option>
+                  {d.games.map((g) => <option key={g._id} value={g._id}>{g.title}</option>)}
+                </select>
+                <button className="ghost-btn sm" onClick={() => delUser(u)}>Delete</button>
+              </div>
+            </td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </>)}
+
+    {tab === 'games' && (
+      <table className="ptable">
+        <thead><tr><th>Game</th><th>Developer</th><th>Price</th><th>Status</th><th /></tr></thead>
+        <tbody>{d.games.map((g) => (
+          <tr key={g._id}>
+            <td><Link className="t-name" to={'/games/' + g.slug}>{g.title}</Link></td>
+            <td className="t-genre">@{g.developer?.username || '?'}</td>
+            <td className="t-now">${Number(g.price || 0).toFixed(2)}</td>
+            <td>
+              <select defaultValue={g.status} onChange={(e) => setGameStatus(g, e.target.value)} aria-label={`Status for ${g.title}`}>
+                <option value="published">published</option>
+                <option value="draft">draft</option>
+                <option value="delisted">delisted</option>
+              </select>
+            </td>
+            <td className="t-genre">{g.stats?.unitsDigital ?? 0} digital · {g.stats?.unitsPhysical ?? 0} box</td>
+          </tr>
+        ))}</tbody>
+      </table>
+    )}
+
+    {tab === 'toys' && (
+      <table className="ptable">
+        <thead><tr><th>Toy</th><th>Price</th><th>Stock</th><th>Sold</th><th /></tr></thead>
+        <tbody>{d.toys.map((t) => <AdminToyRow key={t._id} t={t} onSave={saveToy} />)}</tbody>
+      </table>
+    )}
 
     {tab === 'orders' && (d.orders.length ? (
       <table className="ptable">
@@ -620,13 +782,54 @@ export function Admin() {
                 <td className="t-keys">{o.status}</td>
                 <td className="t-genre">{st || 'digital'}</td>
                 <td className="t-now">${Number(o.grandTotal || 0).toFixed(2)}</td>
-                <td>{label ? <button className="ghost-btn sm" onClick={() => advance(o)}>{label}</button> : null}</td>
+                <td>
+                  <div className="row" style={{ gap: 4 }}>
+                    {label ? <button className="ghost-btn sm" onClick={() => advance(o)}>{label}</button> : null}
+                    {['paid', 'fulfilled', 'partially_shipped', 'shipped', 'delivered'].includes(o.status) && (
+                      <button className="ghost-btn sm" onClick={() => refund(o)}>Refund</button>
+                    )}
+                  </div>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
     ) : <div className="empty"><h3>No orders yet</h3><p>Paid orders appear here for fulfilment.</p></div>)}
+
+    {tab === 'payments' && (
+      <table className="ptable">
+        <thead><tr><th>Reference</th><th>Buyer</th><th>Amount</th><th>Provider</th><th>Status</th><th>Created</th></tr></thead>
+        <tbody>{d.payments.map((p) => (
+          <tr key={p._id}>
+            <td className="t-name">{p.orderId}</td>
+            <td className="t-genre">@{p.user?.username || '?'}</td>
+            <td className="t-now">{new Intl.NumberFormat('vi-VN').format(p.amount || 0)} ₫</td>
+            <td className="t-genre">{p.provider}{p.live ? ' · live' : ' · sandbox'}</td>
+            <td className="t-keys">{p.status}</td>
+            <td className="t-genre">{new Date(p.createdAt).toLocaleDateString()}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+    )}
+
+    {tab === 'devs' && (d.devRequests.length ? (
+      <table className="ptable">
+        <thead><tr><th>User</th><th>Studio</th><th>Email</th><th>Requested</th><th /></tr></thead>
+        <tbody>{d.devRequests.map((u) => (
+          <tr key={u._id}>
+            <td className="t-name">@{u.username}</td>
+            <td className="t-genre">{u.devProfile?.studioName}</td>
+            <td className="t-genre">{u.email}</td>
+            <td className="t-genre">{u.devProfile?.requestedAt ? new Date(u.devProfile.requestedAt).toLocaleDateString() : '—'}</td>
+            <td>
+              <button className="cta-btn sm" onClick={() => approveDev(u)}>Approve</button>{' '}
+              <button className="ghost-btn sm" onClick={() => rejectDev(u)}>Reject</button>
+            </td>
+          </tr>
+        ))}</tbody>
+      </table>
+    ) : <p className="muted">No pending developer applications.</p>)}
 
     {tab === 'posts' && (d.posts.length ? (
       <table className="ptable">
@@ -660,6 +863,20 @@ export function Admin() {
       </table>
     ) : <p className="muted">No reviews.</p>)}
   </>);
+}
+
+function AdminToyRow({ t, onSave }) {
+  const [price, setPrice] = useState(t.price);
+  const [stock, setStock] = useState(t.stock);
+  return (
+    <tr>
+      <td><Link className="t-name" to={'/toys/' + t.slug}>{t.title}</Link></td>
+      <td><input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} style={{ width: 90 }} aria-label="Price" /></td>
+      <td><input type="number" value={stock} onChange={(e) => setStock(e.target.value)} style={{ width: 70 }} aria-label="Stock" /></td>
+      <td className="t-genre">{t.stats?.unitsSold ?? 0}</td>
+      <td><button className="ghost-btn sm" onClick={() => onSave(t, price, stock)}>Save</button></td>
+    </tr>
+  );
 }
 
 export function Settings({ me, onMe, theme, onTheme }) {

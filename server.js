@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const session = require('express-session');
+const cookieSession = require('cookie-session');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 
@@ -32,30 +32,23 @@ app.use((req, res, next) => {
   next();
 });
 
+/* The session itself lives in a signed, HttpOnly cookie on the user's machine.
+   Nothing is kept in process memory or in MongoDB, so a restart does not sign
+   anyone out, and there is no sessions collection to grow or clean up. The
+   cookie is signed with SESSION_SECRET: the browser can read its own payload
+   but cannot change it without invalidating the signature. */
 const sessionOptions = {
-  secret: process.env.SESSION_SECRET || 'pixelvault-dev-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 1000 * 60 * 60 * 24 * 7,
-    // Secure only when the request is actually https (or a trusted proxy says
-    // so). A plain boolean tied to NODE_ENV silently drops the cookie on any
-    // plain-http run where NODE_ENV=production is set, signing everyone out of
-    // every /api route.
-    secure: 'auto',
-    sameSite: 'lax',
-  },
+  name: 'pv.sid',
+  keys: [process.env.SESSION_SECRET || 'pixelvault-dev-secret'],
+  maxAge: 1000 * 60 * 60 * 24 * 7,
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.RENDER === 'true',
 };
 
-/* Keep sessions in MongoDB rather than the process heap.
- *
- * MemoryStore loses every login the moment the process is replaced, which on a
- * platform that recycles instances happens automatically. The store is created
- * unconditionally: Mongoose buffers queries issued before the connection opens,
- * so there is nothing to wait for and nothing to swap in later.
- */
-const { createMongoSessionStore } = require('./lib/mongoSessionStore');
-app.use(session({ ...sessionOptions, store: createMongoSessionStore(mongoose.connection) }));
+/* Sessions live in a signed cookie on the client. There is no server-side
+   store to configure and no session row in MongoDB. */
+app.use(cookieSession(sessionOptions));
 
 // JSON API for the React SPA
 app.use('/api', require('./routes/api').router);

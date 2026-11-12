@@ -9,6 +9,7 @@ const mongoose = require('mongoose');
  * QR code left on a public screen cannot be replayed later. */
 const qrLoginSchema = new mongoose.Schema({
   token: { type: String, required: true, unique: true },
+  browserSecret: { type: String, default: '' },
   status: { type: String, enum: ['pending', 'confirmed'], default: 'pending' },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now, expires: 90 },

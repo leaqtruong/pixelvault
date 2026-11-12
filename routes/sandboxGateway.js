@@ -49,6 +49,7 @@ const page = (body, title) => `<!doctype html><html lang="vi"><head><meta charse
 </div></body></html>`;
 
 const money = (n) => new Intl.NumberFormat('vi-VN').format(Number(n)) + ' ₫';
+const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /* Carry every signed parameter through the form as hidden fields, so adding a
  * bank code cannot disturb the signature the store is about to check. */
@@ -87,10 +88,10 @@ router.get('/sandbox-gateway', (req, res) => {
 
   res.send(page(`
     <dl>
-      <dt>Mã đơn</dt><dd>${txnRef}</dd>
-      <dt>Nội dung</dt><dd>${String(q.vnp_OrderInfo || '')}</dd>
-      <dt>Cổng</dt><dd>${String(q.vnp_TmnCode || '')}</dd>
-      <dt>Thời điểm</dt><dd>${String(q.vnp_CreateDate || '')}</dd>
+      <dt>Mã đơn</dt><dd>${esc(txnRef)}</dd>
+      <dt>Nội dung</dt><dd>${esc(q.vnp_OrderInfo)}</dd>
+      <dt>Cổng</dt><dd>${esc(q.vnp_TmnCode)}</dd>
+      <dt>Thời điểm</dt><dd>${esc(q.vnp_CreateDate)}</dd>
     </dl>
     <div class="amount"><span>Số tiền</span><b>${money(amount / 100)}</b></div>
     <form method="POST" action="/sandbox-gateway/result">
@@ -148,7 +149,7 @@ function handleResult(req, res) {
 
   const signedOut = gateway.sandboxResponse({
     txnRef, amount,
-    status: act === 'fail' ? 'fail' : 'ok',
+    status: act === 'ok' ? 'ok' : 'fail',
     bankCode: (req.body && req.body.vnp_BankCode) || signed.vnp_BankCode,
   });
   res.redirect(302, `${returnUrl}?${gateway.queryOf(signedOut)}`);

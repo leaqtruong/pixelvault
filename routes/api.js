@@ -108,19 +108,36 @@ router.use((req, res, next) => {
   next();
 });
 
-const needLogin = (req, res, next) => {
+const needLogin = async (req, res, next) => {
   if (!req.session.user) return res.status(401).json({ error: 'Login required' });
-  next();
+  try {
+    /* A cookie session outlives the database row it names: the admin can delete
+       an account while that browser still holds a valid cookie. Refresh the
+       user from MongoDB on every protected request and clear the cookie when
+       the account no longer exists. */
+    const u = await User.findById(req.session.user._id).select('username role email avatar').lean();
+    if (!u) { req.session = null; return res.status(401).json({ error: 'Login required' }); }
+    req.session.user = { _id: u._id, username: u.username, role: u.role, email: u.email, avatar: u.avatar || '' };
+    next();
+  } catch (e) { res.status(500).json({ error: 'Login check failed.' }); }
 };
-const needDev = (req, res, next) => {
+const needDev = async (req, res, next) => {
   if (!req.session.user) return res.status(401).json({ error: 'Login required' });
-  if (!['developer', 'admin'].includes(req.session.user.role)) return res.status(403).json({ error: 'Developer required' });
-  next();
+  try {
+    const u = await User.findById(req.session.user._id).select('role').lean();
+    if (!u || !['developer', 'admin'].includes(u.role)) return res.status(403).json({ error: 'Developer required' });
+    req.session.user.role = u.role;
+    next();
+  } catch (e) { res.status(500).json({ error: 'Authorization check failed.' }); }
 };
-const needAdmin = (req, res, next) => {
+const needAdmin = async (req, res, next) => {
   if (!req.session.user) return res.status(401).json({ error: 'Login required' });
-  if (req.session.user.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
-  next();
+  try {
+    const u = await User.findById(req.session.user._id).select('role').lean();
+    if (!u || u.role !== 'admin') return res.status(403).json({ error: 'Admin required' });
+    req.session.user.role = u.role;
+    next();
+  } catch (e) { res.status(500).json({ error: 'Authorization check failed.' }); }
 };
 const me = (req) => (req.session.user ? { _id: req.session.user._id, username: req.session.user.username, role: req.session.user.role, email: req.session.user.email, avatar: req.session.user.avatar || '' } : null);
 
@@ -164,12 +181,12 @@ router.post('/auth/login', async (req, res) => {
     res.json({ user: me(req) });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
-router.post('/auth/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
+router.post('/auth/logout', (req, res) => { req.session = null; res.json({ ok: true }); });
 router.get('/auth/me', async (req, res) => {
-  if (req.session.user && req.session.user.avatar === undefined) {
-    const u = await User.findById(req.session.user._id).select('avatar').lean().catch(() => null);
-    req.session.user.avatar = u?.avatar || '';
-  }
+  if (!req.session.user) return res.json({ user: null });
+  const u = await User.findById(req.session.user._id).select('username role email avatar').lean().catch(() => null);
+  if (!u) { req.session = null; return res.json({ user: null }); }
+  req.session.user = { _id: u._id, username: u.username, role: u.role, email: u.email, avatar: u.avatar || '' };
   res.json({ user: me(req) });
 });
 
@@ -197,26 +214,48 @@ router.get('/games', async (req, res) => {
       const viewer = req.session.user ? await User.findById(req.session.user._id).lean() : null;
       if (viewer?.preferences?.matureFilter) filter.rating = { $nin: ['M', 'AO'] };
     } catch {}
-    let games = await Game.find(filter).populate('developer', 'username').lean();
     if (q) {
       const rx = new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      games = games.filter((g) => rx.test(g.title) || rx.test(g.description) || rx.test(g.tagline));
+      filter.$or = [{ title: rx }, { description: rx }, { tagline: rx }];
     }
+    const effectivePrice = { $multiply: ['$price', { $subtract: [1, { $divide: [{ $ifNull: ['$discountPct', 0] }, 100] }] }] };
     if (maxPrice !== undefined && maxPrice !== '') {
       const mp = Number(maxPrice);
-      if (!Number.isNaN(mp)) games = games.filter((g) => g.price * (1 - (g.discountPct || 0) / 100) <= mp);
+      if (!Number.isNaN(mp)) filter.$expr = { $lte: [effectivePrice, mp] };
     }
-    const sorts = {
-      popular: (a, b) => (b.stats.views + b.stats.unitsDigital * 10) - (a.stats.views + a.stats.unitsDigital * 10),
-      newest: (a, b) => new Date(b.releaseDate) - new Date(a.releaseDate),
-      priceAsc: (a, b) => a.price * (1 - (a.discountPct || 0) / 100) - (b.price * (1 - (b.discountPct || 0) / 100)),
-      priceDesc: (a, b) => b.price * (1 - (b.discountPct || 0) / 100) - (a.price * (1 - (a.discountPct || 0) / 100)),
-      rating: (a, b) => (b.stats.reviewCount ? b.stats.reviewSum / b.stats.reviewCount : 0) - (a.stats.reviewCount ? a.stats.reviewSum / a.stats.reviewCount : 0),
-    };
-    games.sort(sorts[sort] || sorts.popular);
-    const { items, total, totalPages, page: pg, limit: lim } = paginate(games, page, limit);
+    const lim = Math.min(60, Math.max(1, parseInt(limit, 10) || 24));
+    const total = await Game.countDocuments(filter);
+    const totalPages = Math.max(1, Math.ceil(total / lim));
+    const pg = Math.min(Math.max(1, parseInt(page, 10) || 1), totalPages);
+    const skip = (pg - 1) * lim;
+    const sortSpec = {
+      popular: { _popular: -1, _id: 1 },
+      newest: { releaseDate: -1, _id: -1 },
+      priceAsc: { _effectivePrice: 1, _id: 1 },
+      priceDesc: { _effectivePrice: -1, _id: -1 },
+      rating: { _rating: -1, 'stats.reviewCount': -1, _id: 1 },
+    }[sort] || { _popular: -1, _id: 1 };
+    /* Sort and paginate in MongoDB. The previous version loaded the whole
+       catalogue, filtered and sorted it in Node, then sliced out one page —
+       fine at 74 rows, O(catalogue) at any real size. */
+    const pageIds = await Game.aggregate([
+      { $match: filter },
+      { $addFields: {
+        _effectivePrice: effectivePrice,
+        _popular: { $add: [{ $ifNull: ['$stats.views', 0] }, { $multiply: [{ $ifNull: ['$stats.unitsDigital', 0] }, 10] }] },
+        _rating: { $cond: [{ $gt: [{ $ifNull: ['$stats.reviewCount', 0] }, 0] }, { $divide: [{ $ifNull: ['$stats.reviewSum', 0] }, '$stats.reviewCount'] }, 0] },
+      } },
+      { $sort: sortSpec },
+      { $skip: skip },
+      { $limit: lim },
+      { $project: { _id: 1 } },
+    ]);
+    const ids = pageIds.map((r) => r._id);
+    const docs = ids.length ? await Game.find({ _id: { $in: ids } }).populate('developer', 'username').lean() : [];
+    const byId = new Map(docs.map((g) => [String(g._id), g]));
+    const items = ids.map((id) => byId.get(String(id))).filter(Boolean);
     const scope = { status: 'published', productType: { $ne: 'toy' } };
-    const [genres, tags, categories, languages] = await Promise.all([
+    const [genres, tags, categories, platforms] = await Promise.all([
       Game.distinct('genres', scope),
       // Most-used tags first, so the store's tag browser shows the popular
       // ones instead of an alphabetical wall of every tag in the catalogue.
@@ -230,7 +269,7 @@ router.get('/games', async (req, res) => {
       Game.distinct('categories', scope),
       Game.distinct('platforms', scope),
     ]);
-    res.json({ games: items, total, totalPages, page: pg, limit: lim, genres, tags, categories, platforms: languages });
+    res.json({ games: items, total, totalPages, page: pg, limit: lim, genres, tags, categories, platforms });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -256,8 +295,9 @@ router.get('/games/:slug', async (req, res) => {
 router.post('/games/:id/wishlist', needLogin, async (req, res) => {
   const user = await User.findById(req.session.user._id);
   const gid = req.params.id;
-  const has = user.wishlist.map(String).includes(String(gid));
-  if (has) user.wishlist.pull(gid); else user.wishlist.push(gid);
+  const list = Array.isArray(user.wishlist) ? user.wishlist : [];
+  const has = list.map(String).includes(String(gid));
+  user.wishlist = has ? list.filter((x) => String(x) !== String(gid)) : [...list, gid];
   await user.save();
   res.json({ wishlisted: !has });
 });
@@ -302,8 +342,9 @@ router.get('/toys/:slug', async (req, res) => {
 router.post('/toys/:id/wishlist', needLogin, async (req, res) => {
   const user = await User.findById(req.session.user._id);
   const tid = req.params.id;
-  const has = (user.toyWishlist || []).map(String).includes(String(tid));
-  if (has) user.toyWishlist.pull(tid); else user.toyWishlist.push(tid);
+  const list = Array.isArray(user.toyWishlist) ? user.toyWishlist : [];
+  const has = list.map(String).includes(String(tid));
+  user.toyWishlist = has ? list.filter((x) => String(x) !== String(tid)) : [...list, tid];
   await user.save();
   res.json({ wishlisted: !has });
 });
@@ -311,37 +352,31 @@ router.post('/toys/:id/wishlist', needLogin, async (req, res) => {
 // ---------- home ----------
 router.get('/home', async (req, res) => {
   try {
-    const featured = await Game.find({ status: 'published', productType: { $ne: 'toy' }, featured: true }).limit(5).lean();
-    const deals = await Game.find({ status: 'published', productType: { $ne: 'toy' }, discountPct: { $gt: 0 } }).sort({ discountPct: -1 }).limit(8).lean();
-    const fresh = await Game.find({ status: 'published', productType: { $ne: 'toy' } }).sort({ releaseDate: -1 }).limit(8).lean();
-    const threads = await Post.find().sort({ createdAt: -1 }).limit(5).populate('author', 'username').lean();
-    const toys = await Toy.find({ status: 'published' }).limit(4).lean();
-    const catNames = ['Action', 'RPG', 'Strategy', 'Indie', 'Adventure', 'Simulation', 'Horror', 'Free to Play'];
-    const catTiles = [];
-    for (const c of catNames) {
-      const g = await Game.findOne({ status: 'published', productType: { $ne: 'toy' }, genres: c }).lean();
-      if (g) catTiles.push({ name: c, img: g.coverImage, slug: g.slug });
-    }
-    // Ledger figures — all counted from the database, never invented.
-    // There is no "keys in stock" line any more: keys are not stocked, they are
-    // obtained from the supplier when an order is fulfilled. What is worth
-    // showing instead is how many keys have actually been issued, which is a
-    // fact rather than a promise.
     const published = { status: 'published', productType: { $ne: 'toy' } };
-    const [titles, toyCount, dealsAgg, keysIssued, orderAgg] = await Promise.all([
+    const catNames = ['Action', 'RPG', 'Strategy', 'Indie', 'Adventure', 'Simulation', 'Horror', 'Free to Play'];
+    const [featured, deals, fresh, threads, toys, catRows, titles, toyCount, dealsAgg, keysIssued, orderAgg] = await Promise.all([
+      Game.find({ ...published, featured: true }).limit(5).lean(),
+      Game.find({ ...published, discountPct: { $gt: 0 } }).sort({ discountPct: -1 }).limit(8).lean(),
+      Game.find(published).sort({ releaseDate: -1 }).limit(8).lean(),
+      Post.find().sort({ createdAt: -1 }).limit(5).populate('author', 'username').lean(),
+      Toy.find({ status: 'published' }).limit(4).lean(),
+      Game.aggregate([
+        { $match: { ...published, genres: { $in: catNames } } },
+        { $unwind: '$genres' },
+        { $match: { genres: { $in: catNames } } },
+        { $sort: { 'stats.views': -1 } },
+        { $group: { _id: '$genres', img: { $first: '$coverImage' }, slug: { $first: '$slug' } } },
+      ]),
+      // Ledger figures — all counted from the database, never invented.
       Game.countDocuments(published),
       Toy.countDocuments({ status: 'published' }),
       Game.countDocuments({ ...published, discountPct: { $gt: 0 } }),
       GameKey.countDocuments({ status: 'sold' }),
       Order.countDocuments({ status: { $ne: 'cancelled' } }),
     ]);
-    const ledger = {
-      titles,
-      toys: toyCount,
-      onSale: dealsAgg,
-      keysIssued,
-      orders: orderAgg,
-    };
+    const byGenre = new Map(catRows.map((r) => [r._id, r]));
+    const catTiles = catNames.map((name) => byGenre.get(name)).filter(Boolean).map((r) => ({ name: r._id, img: r.img, slug: r.slug }));
+    const ledger = { titles, toys: toyCount, onSale: dealsAgg, keysIssued, orders: orderAgg };
     res.json({ featured, deals, fresh, threads, toys, catTiles, ledger });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -364,6 +399,7 @@ router.get('/deals', async (req, res) => {
 const getCart = (req) => { if (!req.session.cart) req.session.cart = []; return req.session.cart; };
 
 router.get('/cart', async (req, res) => {
+  await consumeCartClear(req);
   const items = getCart(req);
   const dead = [];
   for (const i of items) {
@@ -394,6 +430,7 @@ router.get('/cart', async (req, res) => {
 });
 
 router.post('/cart/add', async (req, res) => {
+  await consumeCartClear(req);
   const { gameId, toyId, edition = 'digital', qty = 1 } = req.body;
   const items = getCart(req);
   const qtyWanted = Math.trunc(Number(qty));
@@ -492,6 +529,7 @@ function shippingQuote(items, method) {
 }
 
 router.get('/checkout/summary', needLogin, async (req, res) => {
+  await consumeCartClear(req);
   const items = getCart(req);
   const method = req.query.method || 'standard';
   const quote = shippingQuote(items, method);
@@ -631,6 +669,7 @@ async function fulfilOrder(order) {
  * hand back a URL to send the shopper to. Nothing is reserved or claimed yet —
  * if they abandon the gateway, no stock is held. */
 router.post('/checkout/place', needLogin, async (req, res) => {
+  await consumeCartClear(req);
   const items = getCart(req);
   if (!items.length) return res.status(400).json({ error: 'Cart is empty' });
   const { method = 'standard', fullName, street, city, region, postal, country = 'US', phone, cardLast4 } = req.body;
@@ -781,6 +820,26 @@ router.post('/checkout/place', needLogin, async (req, res) => {
   res.json({ ok: true, orderId: order._id, paymentUrl: url, provider, live, amount: grandTotal });
 });
 
+/* Settlement runs from the IPN too, where there is no request session. Mark
+   the buyer in the database; the next cart/checkout request consumes the flag
+   and clears the cookie-backed cart. */
+async function consumeCartClear(req) {
+  if (!req.session || !req.session.user) return;
+  try {
+    const u = await User.findOneAndUpdate(
+      { _id: req.session.user._id, cartClearPending: true },
+      { cartClearPending: false },
+      { new: true },
+    ).select('cartClearPending').lean();
+    if (u) {
+      req.session.cart = [];
+      delete req.session.pendingPayment;
+    }
+  } catch (e) {
+    console.error('[cart] clearing failed:', e.message);
+  }
+}
+
 /* Shared by the browser redirect and the gateway's server-to-server notice.
  * Verifies the signature, then settles exactly once. */
 async function settleFromCallback(query, source, req) {
@@ -788,8 +847,12 @@ async function settleFromCallback(query, source, req) {
 
   const gatewayOrderId = String(query.vnp_TxnRef || '');
   const responseCode = String(query.vnp_ResponseCode || '');
+  const transactionStatus = String(query.vnp_TransactionStatus || '');
   const transactionNo = String(query.vnp_TransactionNo || '');
-  const successful = responseCode === '00';
+  /* VNPay only calls a transaction successful when both the payment response
+     and the transaction status are 00. Checking the response alone would settle
+     a QR/authorisation step whose money has not actually moved. */
+  const successful = responseCode === '00' && transactionStatus === '00';
 
   const payment = await Payment.findOne({ gatewayOrderId });
   if (!payment) return { ok: false, reason: 'unknown-payment' };
@@ -832,14 +895,17 @@ async function settleFromCallback(query, source, req) {
 
   const done = await fulfilOrder(order);
 
-  // Empty the basket only once the money is actually confirmed. Leaving it
-  // populated would re-order everything on the next checkout, taking a second
-  // key for every item already bought. On failure it is deliberately kept, so
-  // a declined card can be retried without rebuilding the cart.
-  if (done.ok && req && req.session && req.session.user &&
-      String(req.session.user._id) === String(order.user)) {
-    req.session.cart = [];
-    delete req.session.pendingPayment;
+  // Empty the basket only once the money is actually confirmed. The IPN has
+  // no request session, so mark the buyer in the database; the next cart or
+  // checkout request consumes the flag and clears the cookie-backed cart. On
+  // failure the cart is deliberately kept, so a declined card can be retried.
+  if (done.ok) {
+    await User.updateOne({ _id: order.user }, { cartClearPending: true });
+    if (req && req.session && req.session.user &&
+        String(req.session.user._id) === String(order.user)) {
+      req.session.cart = [];
+      delete req.session.pendingPayment;
+    }
   }
 
   return {
@@ -1047,21 +1113,36 @@ router.delete('/users/me/addresses/:id', needLogin, async (req, res) => {
 router.post('/dev/apply', needLogin, async (req, res) => {
   const { studioName, website, payoutEmail } = req.body;
   if (!studioName || !payoutEmail) return res.status(400).json({ error: 'Studio + payout email required.' });
-  await User.updateOne({ _id: req.session.user._id }, { role: 'developer', devProfile: { studioName, website, payoutEmail, verified: false, balanceOwed: 0 } });
-  req.session.user.role = 'developer';
-  res.json({ ok: true });
+  const user = await User.findById(req.session.user._id).select('role devProfile').lean();
+  if (!user) return res.status(401).json({ error: 'Login required' });
+  if (user.role === 'developer' || user.role === 'admin') return res.status(400).json({ error: 'Developer access already granted.' });
+  if (user.devProfile?.studioName && user.devProfile?.verified === false) return res.status(409).json({ error: 'Application already pending review.' });
+  await User.updateOne({ _id: req.session.user._id }, {
+    devProfile: { studioName, website, payoutEmail, verified: false, balanceOwed: 0, requestedAt: new Date() },
+  });
+  res.json({ ok: true, pending: true });
+});
+
+router.get('/dev/status', needLogin, async (req, res) => {
+  const u = await User.findById(req.session.user._id).select('role devProfile').lean();
+  res.json({
+    role: u.role,
+    pending: u.role === 'user' && !!u.devProfile?.studioName && !u.devProfile?.verified,
+    studioName: u.devProfile?.studioName || '',
+  });
 });
 
 router.get('/dev', needDev, async (req, res) => {
   const games = await Game.find({ developer: req.session.user._id }).lean();
   const gameIds = games.map((g) => g._id);
+  const gameIdSet = new Set(gameIds.map(String));
   const orders = await Order.find({ 'devPayouts.game': { $in: gameIds } }).lean();
   let gross = 0, devCut = 0, unitsD = 0, unitsP = 0;
   const monthly = {}; const byGame = {}; const byCountry = {};
   for (const o of orders) {
     const m = new Date(o.createdAt).toISOString().slice(0, 7);
     for (const p of o.devPayouts) {
-      if (!gameIds.map(String).includes(String(p.game))) continue;
+      if (!gameIdSet.has(String(p.game))) continue;
       gross += p.gross; devCut += p.cut;
       monthly[m] = (monthly[m] || 0) + p.gross;
       byGame[String(p.game)] = (byGame[String(p.game)] || 0) + p.gross;
@@ -1212,12 +1293,149 @@ router.post('/community/p/:id/reply', needLogin, async (req, res) => {
 
 // ---------- admin ----------
 router.get('/admin', needAdmin, async (req, res) => {
-  const [orders, posts, reviews] = await Promise.all([
+  const [orders, posts, reviews, users, games, toys, payments, devRequests, userCount, gameCount, toyCount, revenueAgg] = await Promise.all([
     Order.find({}).populate('user', 'username email').sort({ createdAt: -1 }).limit(100).lean(),
     Post.find({}).populate('author', 'username').sort({ createdAt: -1 }).limit(60).lean(),
     Review.find({}).populate('user', 'username').populate('game', 'title slug').sort({ createdAt: -1 }).limit(60).lean(),
+    User.find({}).select('username email role createdAt').sort({ createdAt: -1 }).limit(200).lean(),
+    Game.find({}).populate('developer', 'username').select('title slug price discountPct status stats developer createdAt').sort({ createdAt: -1 }).limit(300).lean(),
+    Toy.find({}).select('title slug price stock stats status seller').sort({ title: 1 }).limit(300).lean(),
+    Payment.find({}).populate('user', 'username').select('orderId gatewayOrderId user order amount currency provider live status responseCode createdAt settledAt').sort({ createdAt: -1 }).limit(100).lean(),
+    User.find({ role: 'user', 'devProfile.studioName': { $exists: true, $ne: '' }, 'devProfile.verified': { $ne: true } })
+      .select('username email devProfile createdAt').sort({ 'devProfile.requestedAt': 1, createdAt: 1 }).lean(),
+    User.countDocuments(),
+    Game.countDocuments(),
+    Toy.countDocuments(),
+    Order.aggregate([{ $match: { status: { $in: ['paid', 'fulfilled', 'partially_shipped', 'shipped', 'delivered'] } } }, { $group: { _id: null, sum: { $sum: '$grandTotal' } } }]),
   ]);
-  res.json({ orders, posts, reviews });
+  const stats = { users: userCount, games: gameCount, toys: toyCount, revenue: revenueAgg[0]?.sum || 0, devRequests: devRequests.length };
+  res.json({ orders, posts, reviews, users, games, toys, payments, devRequests, stats });
+});
+
+router.post('/admin/users/:id/role', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
+  const role = String(req.body.role || '');
+  if (!['user', 'developer', 'admin'].includes(role)) return res.status(400).json({ error: 'Invalid role.' });
+  const u = await User.findById(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  if (String(u._id) === String(req.session.user._id) && role !== 'admin') {
+    return res.status(400).json({ error: 'You cannot remove your own admin access.' });
+  }
+  if (u.role === 'admin' && role !== 'admin' && (await User.countDocuments({ role: 'admin' })) <= 1) {
+    return res.status(400).json({ error: 'At least one admin must remain.' });
+  }
+  u.role = role;
+  if (role === 'developer') {
+    if (!u.devProfile) u.devProfile = {};
+    u.devProfile.verified = true;
+  }
+  await u.save();
+  if (String(u._id) === String(req.session.user._id)) req.session.user.role = role;
+  res.json({ ok: true, role: u.role });
+});
+
+router.post('/admin/games/:id/status', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Game not found' });
+  const status = String(req.body.status || '');
+  if (!['published', 'draft', 'delisted'].includes(status)) return res.status(400).json({ error: 'Invalid status.' });
+  const g = await Game.findById(req.params.id);
+  if (!g) return res.status(404).json({ error: 'Game not found' });
+  g.status = status;
+  await g.save();
+  res.json({ ok: true, status: g.status });
+});
+
+router.post('/admin/devs/:id/approve', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
+  const u = await User.findById(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  if (!u.devProfile?.studioName) return res.status(400).json({ error: 'No developer application.' });
+  u.role = 'developer';
+  u.devProfile.verified = true;
+  u.devProfile.requestedAt = null;
+  await u.save();
+  res.json({ ok: true });
+});
+
+router.post('/admin/devs/:id/reject', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
+  const u = await User.findById(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  if (u.role === 'admin') return res.status(400).json({ error: 'Cannot reject an admin.' });
+  await User.updateOne({ _id: u._id }, { $unset: { devProfile: 1 } });
+  res.json({ ok: true });
+});
+
+/* ---------- owner account controls ---------- */
+router.post('/admin/users', needAdmin, async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { username, email, password, role = 'user' } = req.body;
+    if (!username || !email || !password) return res.status(400).json({ error: 'Username, email and password are required.' });
+    if (!['user', 'developer', 'admin'].includes(role)) return res.status(400).json({ error: 'Invalid role.' });
+    const exists = await User.findOne({ $or: [{ email: String(email).toLowerCase() }, { username }] });
+    if (exists) return res.status(409).json({ error: 'Username or email already exists.' });
+    const passwordHash = await bcrypt.hash(password, 10);
+    const u = await User.create({
+      username, email: String(email).toLowerCase(), passwordHash, role,
+      ...(role === 'developer' ? { devProfile: { studioName: username, verified: true, balanceOwed: 0 } } : {}),
+    });
+    res.json({ ok: true, user: { _id: u._id, username: u.username, email: u.email, role: u.role } });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/admin/users/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
+  if (String(req.params.id) === String(req.session.user._id)) return res.status(400).json({ error: 'You cannot delete your own account.' });
+  const u = await User.findById(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  if (u.role === 'admin' && (await User.countDocuments({ role: 'admin' })) <= 1) {
+    return res.status(400).json({ error: 'At least one admin must remain.' });
+  }
+  await Promise.all([Post.deleteMany({ author: u._id }), Review.deleteMany({ user: u._id })]);
+  await User.deleteOne({ _id: u._id });
+  res.json({ ok: true });
+});
+
+router.post('/admin/users/:id/grant-game', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
+  if (!isObjectId(req.body.gameId)) return res.status(400).json({ error: 'Game required.' });
+  const [u, g] = await Promise.all([
+    User.findById(req.params.id),
+    Game.findById(req.body.gameId).select('title slug price'),
+  ]);
+  if (!u || !g) return res.status(404).json({ error: 'User or game not found.' });
+  if ((u.library || []).some((e) => String(e.game) === String(g._id))) {
+    return res.status(409).json({ error: 'User already owns this game.' });
+  }
+  u.library.push({ game: g._id, edition: 'digital', purchasedAt: new Date(), playMinutes: 0, achievements: [] });
+  await u.save();
+  res.json({ ok: true, game: { _id: g._id, title: g.title } });
+});
+
+/* Refund decision: restore stock, revoke issued keys, remove the games from
+   the buyer's library, and reverse the developer credit. */
+router.post('/admin/orders/:id/refund', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Order not found' });
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (!['paid', 'fulfilled', 'partially_shipped', 'shipped', 'delivered'].includes(order.status)) {
+    return res.status(400).json({ error: `Order is ${order.status}; only paid orders can be refunded.` });
+  }
+  for (const it of order.items) {
+    if (it.kind === 'toy' && it.toy) await Toy.updateOne({ _id: it.toy }, { $inc: { stock: it.qty } });
+    if (it.kind !== 'toy' && it.edition === 'physical' && it.game) await Game.updateOne({ _id: it.game }, { $inc: { 'physical.stock': it.qty } });
+  }
+  await GameKey.updateMany({ order: order._id }, { $set: { status: 'revoked' } });
+  const gameIds = order.items.filter((i) => i.game).map((i) => i.game);
+  if (gameIds.length) await User.updateOne({ _id: order.user }, { $pull: { library: { game: { $in: gameIds } } } });
+  for (const p of order.devPayouts || []) {
+    if (p.developer) await User.updateOne({ _id: p.developer }, { $inc: { 'devProfile.balanceOwed': -Number(p.cut || 0) } });
+  }
+  order.status = 'refunded';
+  order.refundedAt = new Date();
+  await order.save();
+  res.json({ ok: true, status: order.status });
 });
 
 /* packing -> shipped -> delivered. The buyer's order page reads the same
@@ -1339,7 +1557,12 @@ router.stack.forEach((layer) => {
 router.post('/qrlogin/request', async (req, res) => {
   try {
     const token = crypto.randomBytes(24).toString('base64url');
-    await QrLogin.create({ token });
+    /* The QR only carries the token. The browser that asked for it keeps a
+       second secret in its signed cookie; activation must present both, so a
+       leaked token alone cannot sign another browser in. */
+    const browserSecret = crypto.randomBytes(24).toString('base64url');
+    await QrLogin.create({ token, browserSecret });
+    req.session.qrSecret = browserSecret;
     res.json({ token, expiresIn: 90 });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1376,9 +1599,12 @@ router.post('/qrlogin/activate', async (req, res) => {
   try {
     const { token } = req.body || {};
     if (!token) return res.status(400).json({ error: 'Missing token.' });
+    if (!req.session.qrSecret) return res.status(403).json({ error: 'Start the QR login from this browser.' });
     const qr = await QrLogin.findOne({ token });
     if (!qr) return res.status(404).json({ error: 'QR code expired or invalid.' });
     if (qr.status !== 'confirmed') return res.status(409).json({ error: 'Not confirmed yet.' });
+    if (qr.browserSecret !== req.session.qrSecret) return res.status(403).json({ error: 'This QR code belongs to another browser.' });
+    delete req.session.qrSecret;
     req.session.user = { _id: qr.user, username: '', role: 'user', email: '', avatar: '' };
     await QrLogin.deleteOne({ _id: qr._id });
     const user = await User.findById(qr.user).select('username role email avatar').lean();
