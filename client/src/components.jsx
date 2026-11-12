@@ -222,7 +222,7 @@ function Sidebar({ me, theme, onTheme, collapsed, onToggle, cartCount = 0 }) {
             </div>
             {me && (
               <button className={'ghost-btn sm' + (mature ? ' current' : '')} onClick={flipMature}
-                title="Hides only titles a developer rated M or AO. Steam-imported titles carry no age rating."
+                title="Hides only titles rated M or AO. Titles without an age rating stay visible."
                 style={{ marginTop: 8 }}>
                 {mature ? 'Showing all' : 'Hide M and AO'}
               </button>
@@ -311,7 +311,7 @@ export function Layout({ me, onLogout, theme, onTheme, children }) {
         <div className="shell-main">
           <main className="wrap page-enter" key={loc.pathname + loc.search}>{children}</main>
           <footer className="footer">
-            PixelVault demo storefront — coursework project. Game data via the Steam Store API,
+            PixelVault demo storefront — coursework project. Game data stored in MongoDB,
             merch via official brand stores. Delivered keys are DEMO placeholders.<br />
             <span className="tiny">build {BUILD}</span><ApiStatus /> · <Link to="/support" className="tiny">Support &amp; refunds</Link>
           </footer>

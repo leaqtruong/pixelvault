@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api, priceOf } from '../api.js';
-import { GameCard, ToyCard, Price, Pager, useToast } from '../components.jsx';
+import { Price, useToast } from '../components.jsx';
 
 /* ===================================================================
    FAMILY 1 — CATALOG FRONT
@@ -12,8 +12,6 @@ import { GameCard, ToyCard, Price, Pager, useToast } from '../components.jsx';
 export function GameDetail({ me }) {
   const { slug } = useParams();
   const [d, setD] = useState(null);
-  const [live, setLive] = useState(null);
-  const [news, setNews] = useState([]);
   const [rel, setRel] = useState([]);
   const [voted, setVoted] = useState(() => new Set());
   const [votes, setVotes] = useState({});
@@ -22,12 +20,6 @@ export function GameDetail({ me }) {
   const [allLangs, setAllLangs] = useState(false);
   const toast = useToast();
   useEffect(() => { api('/games/' + slug).then(setD).catch((e) => setErr(e.message)); }, [slug]);
-  useEffect(() => {
-    if (d?.game?.steamAppId) {
-      api('/live/' + d.game.steamAppId).then(setLive).catch(() => {});
-      api('/news/' + d.game.steamAppId).then((n) => setNews(n.news || [])).catch(() => {});
-    }
-  }, [d]);
   useEffect(() => {
     if (!d?.game) return;
     const g = d.game.genres && d.game.genres[0];
@@ -177,15 +169,15 @@ export function GameDetail({ me }) {
                   </tbody>
                 </table>
               )
-            ) : <p className="tiny">Steam does not publish system requirements for this title.</p>}
-            {req.source && <p className="tiny" style={{ marginTop: 10 }}>Mirrored from the {req.source}.</p>}
+            ) : <p className="tiny">No system requirements are recorded for this title.</p>}
+            {req.source && <p className="tiny" style={{ marginTop: 10 }}>Specifications from the catalog record.</p>}
           </div>
 
           <div className="sys_cols doc">
             <div>
               <h5 style={{ marginTop: 0 }}>Platforms</h5>
               <ul>{(game.platforms || ['Windows']).map((p) => <li key={p} className="meta_line"><span className="k">{p}</span></li>)}</ul>
-              {game.deckVerified && <p className="tiny" style={{ marginTop: 6 }}>Steam Deck: {game.deckVerified}</p>}
+              {game.deckVerified && <p className="tiny" style={{ marginTop: 6 }}>Handheld: {game.deckVerified}</p>}
             </div>
             <div>
               <h5 style={{ marginTop: 0 }}>Release</h5>
@@ -193,7 +185,7 @@ export function GameDetail({ me }) {
               {!!(game.contentWarnings || []).length && (
                 <p className="tiny">Content: {(game.contentWarnings || []).join(' · ')}</p>
               )}
-              {(game.categories || []).includes('Steam Achievements') && <p className="tiny">Steam Achievements included</p>}
+              {(game.categories || []).some((c) => /achievement/i.test(c)) && <p className="tiny">Achievements included</p>}
             </div>
           </div>
 
@@ -231,17 +223,6 @@ export function GameDetail({ me }) {
                   <span className="tag" key={f}>{f}</span>
                 ))}
               </div>
-            </div>
-          )}
-
-          {!!news.length && (
-            <div className="doc">
-              <h3>News</h3>
-              {news.map((n, ix) => (
-                <a key={ix} className="news-item" href={n.url} target="_blank" rel="noreferrer">
-                  <b>{n.title}</b><br /><span>{n.feed} · {n.date ? new Date(n.date).toLocaleDateString() : ''}</span>
-                </a>
-              ))}
             </div>
           )}
 
@@ -322,12 +303,6 @@ export function GameDetail({ me }) {
           <div className="tiny">By {game.studioName}</div>
           <div className="tiny">{(game.platforms || ['Windows']).join(' · ')}</div>
           <div className="rail-price"><Price g={game} /></div>
-          {live && (live.players !== null || live.reviews) ? (
-            <p className="tiny"><span className="live-dot" />
-              {live.players !== null ? live.players.toLocaleString() + ' in-game now' : 'players n/a'}
-              {live.reviews ? ` · Steam: ${live.reviews.desc}` : ''}
-            </p>
-          ) : null}
           <div className="buy-area">
             <h4>{(game.price || 0) > 0 ? 'Digital edition' : 'Free to play'}</h4>
             {(game.price || 0) > 0

@@ -17,7 +17,7 @@ export async function api(path, opts = {}) {
   if (!r.ok) {
     const e = new Error(data.error || `Request failed (${r.status})`);
     /* Callers sometimes need to react to a specific rejection — checkout uses
-       this to refresh the total when Steam reports a price change. */
+       this to refresh the total when the local catalog price changes. */
     e.status = r.status;
     e.code = data.code;
     e.data = data;

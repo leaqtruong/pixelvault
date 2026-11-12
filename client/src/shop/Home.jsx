@@ -68,10 +68,7 @@ function SplitHero({ items, ledger }) {
           <div className="ledger-item"><span className="k">Collectibles</span><span className="v">{ledger.toys}</span></div>
           <div className="ledger-item"><span className="k">Orders</span><span className="v">{ledger.orders}</span></div>
         </div>
-        <p className="ledger-note">
-          <span className="live-dot" />
-          Player counts and review verdicts are pulled live from the Steam Web API.
-        </p>
+        <p className="ledger-note">Catalog, prices and store figures are served from the local MongoDB catalog.</p>
       </aside>
     </section>
   );

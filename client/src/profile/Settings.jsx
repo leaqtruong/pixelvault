@@ -33,7 +33,17 @@ export function Settings({ me, onMe, theme, onTheme }) {
       </div>
     </div>
     <div className="panel"><h3>About this demo</h3>
-      <p className="tiny">PixelVault coursework storefront — React + Express + MongoDB. Game data via Steam Store API, live players + review verdicts via Steam Web APIs, merch via official stores. Keys are DEMO placeholders.</p>
+      <p className="tiny">PixelVault is a coursework storefront for digital games and physical collectibles. It is a full-stack build: a React SPA, an Express REST API, MongoDB for data and images, VNPay sandbox for payments, and an Android Kotlin client.</p>
+      <div className="kpi-row">
+        <div className="kpi"><span>Frontend</span><b>React + Vite</b></div>
+        <div className="kpi"><span>Backend</span><b>Node + Express</b></div>
+        <div className="kpi"><span>Database</span><b>MongoDB</b></div>
+        <div className="kpi"><span>Mobile</span><b>Android Kotlin</b></div>
+      </div>
+      <p className="tiny"><b>How it is built:</b> React Router pages are split by feature; the API exposes REST endpoints for catalog, cart, checkout, orders, library, reviews, community, developer tools and admin. Authentication uses a signed HttpOnly cookie; passwords are bcrypt-hashed; login attempts are rate-limited.</p>
+      <p className="tiny"><b>Data and payments:</b> MongoDB stores the business collections and GridFS stores the images. Orders snapshot title and price; library entries, addresses and forum replies are embedded documents; unique, text and TTL indexes keep the data consistent. Payment callbacks are verified with HMAC-SHA512 and settlement is idempotent, so a replay cannot issue a second key.</p>
+      <p className="tiny"><b>Features:</b> catalog filters, game detail, cart and checkout, VNPay sandbox, library and key reveal, order tracking, reviews, community forum, QR login, developer portal, admin desk (users, catalog, toys, orders, payments, payouts, moderation), and an Android client.</p>
+      <p className="tiny"><b>Deployment:</b> the Node service and MongoDB database run on managed cloud hosting; Vite builds the client and Express serves it. All delivered keys are <code>DEMO-…</code> placeholders for coursework.</p>
     </div>
   </>);
 }

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { api } from '../api.js';
-import { useToast, ImageUpload } from '../components.jsx';
+import { useToast } from '../components.jsx';
+import { DevGameForm } from './DevGameForm.jsx';
 
 function DevReplies({ games, onDone }) {
   const toast = useToast();
@@ -85,9 +86,22 @@ export function Dev() {
     e.preventDefault();
     const f = new FormData(e.target);
     try {
-      await api(`/dev/${g._id}/edit`, { method: 'POST', body: { price: f.get('price'), discountPct: f.get('discountPct'), status: f.get('status'), physicalStock: f.get('physicalStock') } });
+      await api(`/dev/${g._id}/edit`, {
+        method: 'POST',
+        body: {
+          title: f.get('title'), tagline: f.get('tagline'), description: f.get('description'),
+          coverImage: f.get('coverImage'), genres: f.get('genres'), tags: f.get('tags'),
+          price: f.get('price'), discountPct: f.get('discountPct'),
+          status: f.get('status'), physicalStock: f.get('physicalStock'),
+        },
+      });
       setEditing(null); load(); toast('Saved ' + g.title);
     } catch (er) { toast(er.message, 'err'); }
+  };
+  const delGame = async (g) => {
+    if (!window.confirm(`Delete "${g.title}" permanently? Keys, reviews and forum posts for it will also be removed.`)) return;
+    try { await api(`/dev/${g._id}`, { method: 'DELETE' }); setEditing(null); load(); toast('Game deleted'); }
+    catch (e) { toast(e.message, 'err'); }
   };
   if (!d) return <p className="muted">Loading…</p>;
   if (d.err) return <p className="muted">{d.pending ? 'Developer application pending admin approval.' : <>Developer account required. <Link to="/dev/apply">Become a developer</Link></>}</p>;
@@ -138,25 +152,17 @@ export function Dev() {
     <DevReplies games={d.games} onDone={load} />
     <div className="panel">
       <h3>Your titles ({d.games.length})</h3>
+      {editing && (() => {
+        const g = d.games.find((x) => x._id === editing);
+        return g ? <DevGameForm key={g._id} game={g} onSave={(e) => saveEdit(e, g)} onDelete={() => delGame(g)} onCancel={() => setEditing(null)} /> : null;
+      })()}
       {d.games.length ? (
         <table className="tbl">
           <thead><tr><th>Title</th><th>Price</th><th>Keys</th><th>Box</th><th>Revenue</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {d.games.map((g) => (
               <tr key={g._id}>
-                <td><Link className="t-name" to={`/games/${g.slug}`}>{g.title}</Link>
-                  {editing === g._id && (
-                    <form className="row" onSubmit={(e) => saveEdit(e, g)} style={{ marginTop: 8 }}>
-                      <input name="price" type="number" step="0.01" defaultValue={g.price} aria-label="Price" />
-                      <input name="discountPct" type="number" defaultValue={g.discountPct} aria-label="Percent off" />
-                      <input name="physicalStock" type="number" defaultValue={g.physical?.stock || 0} aria-label="Box stock" />
-                      <select name="status" defaultValue={g.status} aria-label="Status">
-                        <option>published</option><option>draft</option><option>delisted</option>
-                      </select>
-                      <button className="cta-btn sm">Save</button>
-                    </form>
-                  )}
-                </td>
+                <td><Link className="t-name" to={`/games/${g.slug}`}>{g.title}</Link></td>
                 <td className="num">${Number(g.price || 0).toFixed(2)}</td>
                 <td className="num">
                   {g.stats && g.stats.keysSold != null ? g.stats.keysSold : '—'}

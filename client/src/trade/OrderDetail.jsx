@@ -24,7 +24,7 @@ export function OrderDetail() {
       </p>
       <div className="two-col"><div className="panel"><h3>Items</h3>
         {order.items.map((it, ix) => <div key={ix}><p>{it.qty}× {it.title} ({it.edition}) — ${(it.unitPrice * it.qty).toFixed(2)}</p>
-          {(it.keyIds || []).map((k) => <p key={k._id}><code>{plainById[k._id]}</code> <span className="tiny">· Steam key</span></p>)}
+          {(it.keyIds || []).map((k) => <p key={k._id}><code>{plainById[k._id]}</code> <span className="tiny">· Game key</span></p>)}
         </div>)}
         <hr /><h3>Total ${order.grandTotal.toFixed(2)}</h3></div>
         <div className="panel"><h3>Shipment</h3>

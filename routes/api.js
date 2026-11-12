@@ -1203,11 +1203,29 @@ router.post('/dev/:id/edit', needDev, async (req, res) => {
   const patch = {};
   if (req.body.title !== undefined) patch.title = String(req.body.title).slice(0, 120);
   if (req.body.tagline !== undefined) patch.tagline = String(req.body.tagline).slice(0, 200);
+  if (req.body.description !== undefined) patch.description = String(req.body.description).slice(0, 5000);
+  if (req.body.coverImage !== undefined) patch.coverImage = String(req.body.coverImage);
+  if (req.body.genres !== undefined) patch.genres = splitList(req.body.genres, 'Indie');
+  if (req.body.tags !== undefined) patch.tags = splitList(req.body.tags);
   if (req.body.price !== undefined) patch.price = Math.max(0, Number(req.body.price) || 0);
   if (req.body.discountPct !== undefined) patch.discountPct = Math.min(90, Math.max(0, Number(req.body.discountPct) || 0));
   if (['draft', 'published', 'delisted'].includes(req.body.status)) patch.status = req.body.status;
   if (req.body.physicalStock !== undefined) patch['physical.stock'] = Math.max(0, Number(req.body.physicalStock) || 0);
   await Game.updateOne({ _id: game._id }, patch);
+  res.json({ ok: true });
+});
+
+router.delete('/dev/:id', needDev, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Not found' });
+  const game = await Game.findOne({ _id: req.params.id, developer: req.session.user._id });
+  if (!game) return res.status(404).json({ error: 'Not found' });
+  await Promise.all([
+    GameKey.deleteMany({ game: game._id }),
+    Review.deleteMany({ game: game._id }),
+    Post.deleteMany({ game: game._id }),
+    User.updateMany({}, { $pull: { wishlist: game._id, library: { game: game._id } } }),
+  ]);
+  await Game.deleteOne({ _id: game._id });
   res.json({ ok: true });
 });
 
@@ -1693,23 +1711,6 @@ router.delete('/admin/reviews/:id', needAdmin, async (req, res) => {
 router.get('/stats', async (req, res) => {
   const [games, orders, toys] = await Promise.all([Game.countDocuments({ status: 'published' }), Order.countDocuments(), Toy.countDocuments({ status: 'published' })]);
   res.json({ games, orders, toys, ok: true });
-});
-
-// Live external Steam data: current players + community review verdict.
-router.get('/live/:appid', async (req, res) => {
-  try {
-    const { liveFor } = require('../lib/steamLive');
-    const data = await liveFor(Number(req.params.appid));
-    res.json(data);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Steam game news (public ISteamNews API).
-router.get('/news/:appid', async (req, res) => {
-  try {
-    const { newsFor } = require('../lib/steamLive');
-    res.json({ news: await newsFor(Number(req.params.appid), Math.min(5, Number(req.query.count) || 3)) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Public client config (Google OAuth client id, when configured).
