@@ -72,9 +72,6 @@ interface PixelVaultApi {
     @GET("library")
     suspend fun library(): LibraryResponse
 
-    @POST("qrlogin/confirm")
-    suspend fun qrConfirm(@Body body: Map<String, String>): Map<String, Any>
-
     @GET("toys")
     suspend fun toys(
         @Query("category") category: String? = null,

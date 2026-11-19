@@ -18,7 +18,7 @@ export function Store() {
   useEffect(() => { setD(null); api('/games?' + qs).then(setD).catch(() => setD({ games: [] })); }, [qs]);
   if (!d) return <p className="muted">Loading…</p>;
   const heading = q.q ? `Results for "${q.q}"`
-    : q.genre ? `${q.genre} titles`
+    : q.genre ? `${(d.genres || []).find((g) => g.slug === q.genre)?.name || q.genre} titles`
     : q.tag ? `Tagged "${q.tag}"`
     : q.platform ? `${q.platform} titles`
     : 'All titles';
@@ -42,7 +42,9 @@ export function Store() {
             <div className="side_box">
               <h4>Genres</h4>
               {d.genres.map((g) => (
-                <Link key={g} className={q.genre === g ? 'on' : ''} to={`/games?genre=${encodeURIComponent(g)}`}>{g}</Link>
+                <Link key={g.slug} className={q.genre === g.slug ? 'on' : ''} to={`/games?genre=${encodeURIComponent(g.slug)}`}>
+                  {g.name}{g.count ? ` (${g.count})` : ''}
+                </Link>
               ))}
             </div>
           )}
@@ -83,7 +85,7 @@ export function Store() {
           <div className="chips">
             <Link className={'chip' + (!q.genre && !q.feature && !q.platform ? ' on' : '')} to="/games">Everything</Link>
             {(d.genres || []).slice(0, 10).map((g) => (
-              <Link key={g} className={'chip' + (q.genre === g ? ' on' : '')} to={`/games?genre=${encodeURIComponent(g)}`}>{g}</Link>
+              <Link key={g.slug} className={'chip' + (q.genre === g.slug ? ' on' : '')} to={`/games?genre=${encodeURIComponent(g.slug)}`}>{g.name}</Link>
             ))}
             {(q.q || q.onSale || q.platform || q.feature || q.maxPrice) && <Link className="chip on" to="/games">Reset filters</Link>}
           </div>

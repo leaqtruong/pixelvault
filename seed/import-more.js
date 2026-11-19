@@ -12,6 +12,7 @@ const GameKey = require('../models/GameKey');
 const User = require('../models/User');
 const { encryptKey, hashKey, makeDemoKey } = require('../lib/keyCrypto');
 const { resolveArt } = require('./steamArt');
+const { resolveGenres } = require('../lib/genres');
 
 // Batch 3 — same shelf as the existing catalog: co-op, survival, roguelike,
 // horror and strategy titles that pair well with what is already listed.
@@ -150,7 +151,9 @@ const CANDIDATES = process.argv.includes('--rebuild')
       const why = rejectReason(d);
       if (why) { skipped.push({ appid, why }); console.log(`[add] skip ${appid} "${d.name}": ${why}`); await sleep(600); continue; }
       const art = await resolveArt(appid, d.header_image);
-      const g = await Game.create(mapGame(appid, d, art, dev._id));
+      const doc = mapGame(appid, d, art, dev._id);
+      doc.genres = await resolveGenres(doc.genres, 'Indie');
+      const g = await Game.create(doc);
       added++;
       console.log(`[add] ${appid} ${g.title}`);
 

@@ -16,6 +16,14 @@ export function AdminUsers({ users, games, q, onChanged }) {
       e.target.reset(); toast('Account created'); onChanged();
     } catch (er) { toast(er.message, 'err'); }
   };
+  const deleteUser = async (u) => {
+    if (!window.confirm(`Delete @${u.username}? Their posts and reviews are removed too.`)) return;
+    try {
+      await api('/admin/users/' + u._id, { method: 'DELETE' });
+      if (manageUser && manageUser._id === u._id) setManageUser(null);
+      toast('Account deleted'); onChanged();
+    } catch (er) { toast(er.message, 'err'); }
+  };
   return (<>
     <form className="panel" onSubmit={createUser} style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
       <h3>Create account</h3>
@@ -37,7 +45,7 @@ export function AdminUsers({ users, games, q, onChanged }) {
           <td className="t-genre">{u.orders || 0}</td>
           <td className="t-now">${Number(u.spent || 0).toFixed(2)}</td>
           <td className="t-genre">{new Date(u.createdAt).toLocaleDateString()}</td>
-          <td><button className="ghost-btn sm" onClick={() => setManageUser(u)}>Open</button></td>
+          <td><button className="ghost-btn sm" onClick={() => setManageUser(u)}>Edit</button>{' '}<button className="ghost-btn sm" onClick={() => deleteUser(u)}>Delete</button></td>
         </tr>
       ))}</tbody>
     </table>

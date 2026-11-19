@@ -5,6 +5,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { reqLines, reqFields, summarise, parseLanguages } = require('./steamReq');
+const { resolveGenres } = require('../lib/genres');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -97,7 +98,7 @@ function platformKey(k) {
 
     if (!dry) {
       const set = {
-        genres, categories: cats, features: cats,
+        genres: await resolveGenres(genres, 'Indie'), categories: cats, features: cats,
         publisher: publishers,
         languages: langs.length,
         languageList: langs,

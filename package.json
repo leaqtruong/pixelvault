@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test",
-    "seed": "node seed/import-steam.js && node seed/seed-toys.js && node seed/seed-reviews.js",
+    "seed": "node seed/import-steam.js && node seed/seed-toys.js && node seed/seed-reviews.js && node seed/migrate-genres.js",
+    "admin:create": "node seed/create-admin.js",
     "client": "npm run dev --prefix client",
     "build:client": "npm run build --prefix client"
   },

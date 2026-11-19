@@ -22,7 +22,7 @@ export function GameDetail({ me }) {
   useEffect(() => { api('/games/' + slug).then(setD).catch((e) => setErr(e.message)); }, [slug]);
   useEffect(() => {
     if (!d?.game) return;
-    const g = d.game.genres && d.game.genres[0];
+    const g = d.game.genres && d.game.genres[0]?.slug;
     if (!g) { setRel([]); return; }
     api(`/games?genre=${encodeURIComponent(g)}&limit=5`)
       .then((r) => setRel((r.games || []).filter((x) => x._id !== d.game._id).slice(0, 4)))
@@ -89,7 +89,7 @@ export function GameDetail({ me }) {
     <>
       <p className="crumbs">
         <Link to="/games">Catalog</Link><span className="sep">/</span>
-        <Link to={`/games?genre=${encodeURIComponent((game.genres || [''])[0])}`}>{(game.genres || ['Indie'])[0]}</Link>
+        <Link to={`/games?genre=${encodeURIComponent((game.genres || [{}])[0]?.slug || '')}`}>{(game.genres || [{}])[0]?.name || 'Games'}</Link>
         <span className="sep">/</span>{game.title}
       </p>
       <div className="game_title_row">
@@ -112,9 +112,14 @@ export function GameDetail({ me }) {
           <div className="doc">
             <h3>About this game</h3>
             <p style={{ fontSize: 13.5 }}>{(game.description || '').replace(/<[^>]*>/g, '')}</p>
-            <div className="tags">{(game.tags || game.genres || []).map((t) => (
-              <Link key={t} className="tag" to={`/games?tag=${encodeURIComponent(t)}`}>{t}</Link>
-            ))}</div>
+            <div className="tags">
+              {(game.tags || []).map((t) => (
+                <Link key={t} className="tag" to={`/games?tag=${encodeURIComponent(t)}`}>{t}</Link>
+              ))}
+              {(game.genres || []).map((g) => (
+                <Link key={g.slug} className="tag" to={`/games?genre=${encodeURIComponent(g.slug)}`}>{g.name}</Link>
+              ))}
+            </div>
           </div>
 
           <div className="doc">
@@ -280,13 +285,13 @@ export function GameDetail({ me }) {
                         <img src={r.coverImage} alt="" loading="lazy" />
                         <span className="rel-hover">
                           <b>{r.title}</b>
-                          <span className="tiny">{r.tagline || (r.genres || []).slice(0, 2).join(' · ')}</span>
+                          <span className="tiny">{r.tagline || (r.genres || []).map((g) => g.name || g).slice(0, 2).join(' · ')}</span>
                           <span className="tiny">{avg ? avg + '/5 · ' + c + ' review' + (c === 1 ? '' : 's') : 'No user reviews'}</span>
                         </span>
                       </span>
                       <span className="rel-body">
                         <b>{r.title}</b>
-                        <span className="tiny">{(r.genres || []).slice(0, 2).join(' · ')}</span>
+                        <span className="tiny">{(r.genres || []).map((g) => g.name || g).slice(0, 2).join(' · ')}</span>
                         <span className="rel-price">{final <= 0 ? 'Free to play' : '$' + final.toFixed(2)}</span>
                       </span>
                     </Link>

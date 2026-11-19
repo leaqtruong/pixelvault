@@ -30,6 +30,14 @@ export function AdminUserPanel({ userId, games, onClose, onChanged }) {
     await act(`/admin/users/${u._id}/grant-game`, { gameId: grantId });
     setGrantId('');
   };
+  const saveProfile = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    await act(`/admin/users/${u._id}`, {
+      username: f.get('username'), email: f.get('email'),
+      displayName: f.get('displayName'), phone: f.get('phone'), bio: f.get('bio'),
+    });
+  };
   return (
     <div className="panel" style={{ marginBottom: 12 }}>
       <div className="sec-head" style={{ marginTop: 0 }}>
@@ -44,6 +52,19 @@ export function AdminUserPanel({ userId, games, onClose, onChanged }) {
         <div className="kpi"><span>Library</span><b>{(u.library || []).length}</b></div>
         <div className="kpi"><span>Wishlist</span><b>{(u.wishlist || []).length + (u.toyWishlist || []).length}</b></div>
       </div>
+      <form key={u._id + u.username + u.email} className="panel" onSubmit={saveProfile} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+        <h3>Edit account</h3>
+        <div className="row">
+          <input name="username" placeholder="Username" defaultValue={u.username} required />
+          <input name="email" type="email" placeholder="Email" defaultValue={u.email} required />
+        </div>
+        <div className="row">
+          <input name="displayName" placeholder="Display name" defaultValue={u.displayName || ''} />
+          <input name="phone" placeholder="Phone" defaultValue={u.phone || ''} />
+        </div>
+        <textarea name="bio" placeholder="Bio" defaultValue={u.bio || ''} />
+        <button className="ghost-btn sm">Save account</button>
+      </form>
       <div className="row" style={{ marginBottom: 8 }}>
         <select value={u.role} onChange={(e) => act(`/admin/users/${u._id}/role`, { role: e.target.value })}>
           <option value="user">user</option>

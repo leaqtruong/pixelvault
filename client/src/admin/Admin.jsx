@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { AdminUsers } from './AdminUsers.jsx';
 import { AdminGames } from './AdminGames.jsx';
+import { AdminGenres } from './AdminGenres.jsx';
 import { AdminToys } from './AdminToys.jsx';
 import { AdminOrders } from './AdminOrders.jsx';
 import { AdminPayments } from './AdminPayments.jsx';
@@ -33,6 +34,7 @@ export function Admin() {
     ['overview', 'Overview'],
     ['users', `Users (${stats.users ?? d.users.length})`],
     ['games', `Games (${stats.games ?? d.games.length})`],
+    ['genres', 'Genres'],
     ['toys', `Toys (${stats.toys ?? d.toys.length})`],
     ['orders', `Orders (${d.orders.length})`],
     ['payments', `Payments (${d.payments.length})`],
@@ -94,6 +96,7 @@ export function Admin() {
 
     {tab === 'users' && <AdminUsers users={d.users} games={d.games} q={q} onChanged={load} />}
     {tab === 'games' && <AdminGames games={d.games} q={q} onChanged={load} />}
+    {tab === 'genres' && <AdminGenres q={q} />}
     {tab === 'toys' && <AdminToys toys={d.toys} q={q} onChanged={load} />}
     {tab === 'orders' && <AdminOrders orders={d.orders} q={q} onChanged={load} />}
     {tab === 'payments' && <AdminPayments payments={d.payments} q={q} />}

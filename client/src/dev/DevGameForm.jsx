@@ -17,7 +17,7 @@ export function DevGameForm({ game, onSave, onDelete, onCancel }) {
         </select>
       </div>
       <div className="row">
-        <input name="genres" placeholder="Genres (comma)" defaultValue={(game.genres || []).join(', ')} />
+        <input name="genres" placeholder="Genres (comma)" defaultValue={(game.genres || []).map((g) => g.name || g).join(', ')} />
         <input name="tags" placeholder="Tags (comma)" defaultValue={(game.tags || []).join(', ')} />
       </div>
       <textarea name="description" placeholder="Description" defaultValue={game.description || ''} />

@@ -40,7 +40,7 @@ function SplitHero({ items, ledger }) {
           <img src={f.coverImage} alt="" />
         </Link>
         <div className="split-veil">
-          <div className="split-kicker">Featured · {(f.genres || []).slice(0, 2).join(' · ')}</div>
+          <div className="split-kicker">Featured · {(f.genres || []).map((g) => g.name || g).slice(0, 2).join(' · ')}</div>
           <h1 className="split-title">{f.title}</h1>
           <p className="split-sub">{sub || 'Delivered as an encrypted demo key the moment checkout clears.'}</p>
           <div className="split-cta">
@@ -105,7 +105,7 @@ export function Home() {
             <Link className="more" to="/games">Full catalog</Link></div>
           <div className="marquee">
             {d.catTiles.map((t) => (
-              <Link key={t.name} to={`/games?genre=${encodeURIComponent(t.name)}`}>
+              <Link key={t.slug} to={`/games?genre=${encodeURIComponent(t.slug)}`}>
                 <img src={t.img} loading="lazy" alt="" /><b>{t.name}</b>
               </Link>
             ))}
@@ -127,7 +127,7 @@ export function Home() {
                   <tr key={g._id}>
                     <td><img className="t-art" src={g.coverImage} loading="lazy" alt="" /></td>
                     <td><Link className="t-name" to={`/games/${g.slug}`}>{g.title}</Link></td>
-                    <td className="t-genre">{(g.genres || []).slice(0, 2).join(', ')}</td>
+                    <td className="t-genre">{(g.genres || []).map((x) => x.name || x).slice(0, 2).join(', ')}</td>
                     <td className="t-was">${g.price.toFixed(2)}</td>
                     <td className="t-now">${priceOf(g).toFixed(2)}</td>
                     <td><span className="t-off">-{g.discountPct}%</span></td>
@@ -153,7 +153,7 @@ export function Home() {
                   <img src={g.coverImage} loading="lazy" alt="" />
                   <span>
                     <span className="nm">{g.title}</span>
-                    <span className="gn">{(g.genres || []).slice(0, 3).join(' · ')}</span>
+                    <span className="gn">{(g.genres || []).map((x) => x.name || x).slice(0, 3).join(' · ')}</span>
                   </span>
                   <span className="num-extra tiny num">{c ? (g.stats.reviewSum / c).toFixed(1) + '/5' : 'no reviews'}</span>
                   <Price g={g} />

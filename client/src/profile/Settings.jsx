@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import QRCode from 'qrcode';
 import { api } from '../api.js';
 import { useToast, ImageUpload } from '../components.jsx';
 

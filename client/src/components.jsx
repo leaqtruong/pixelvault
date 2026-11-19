@@ -375,7 +375,7 @@ export function GameCard({ g, i }) {
       <img src={g.coverImage} loading="lazy" alt="" />
       <div className="gmeta">
         <b>{g.title}</b>
-        <span className="genres">{(g.genres || []).slice(0, 2).join(' · ')}</span>
+        <span className="genres">{(g.genres || []).map((x) => x.name || x).slice(0, 2).join(' · ')}</span>
         <span className="tiny">
           {c ? `${avg.toFixed(1)}/5 · ${c} reviews` : 'No user reviews'}
           {(g.price || 0) > 0 ? ' · key on payment' : ''}

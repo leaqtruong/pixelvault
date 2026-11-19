@@ -9,7 +9,7 @@ PixelVault là cửa hàng game số + merch vật lý, gồm React SPA, Node/Ex
 ## 1.1 Tổ chức dữ liệu
 
 - Hệ quản trị: **MongoDB**, truy cập qua **Mongoose** (database `pixelvault`).
-- Dữ liệu nghiệp vụ nằm trong 10 collection: `users`, `games`, `toys`, `gamekeys`, `orders`, `payments`, `posts`, `reviews`, `qrlogins`, `payouts`.
+- Dữ liệu nghiệp vụ nằm trong 10 collection: `users`, `games`, `genres`, `toys`, `gamekeys`, `orders`, `payments`, `posts`, `reviews`, `payouts`.
 - Ngoài ra: GridFS `images.files` / `images.chunks` (ảnh game, toy).
 - Quan hệ dùng `ObjectId` + `ref`; dữ liệu con (thư viện, địa chỉ, item đơn hàng, reply) được nhúng trực tiếp trong document cha.
 
@@ -42,7 +42,7 @@ classDiagram
     string slug
     ObjectId developer
     string studioName
-    List~string~ genres
+    List~Genre~ genres
     List~string~ tags
     List~string~ platforms
     number price
@@ -53,6 +53,15 @@ classDiagram
     List~Language~ languageList
     GameStats stats
     string status
+  }
+
+  class Genre {
+    ObjectId _id
+    string slug
+    string name
+    string description
+    number sortOrder
+    boolean active
   }
 
   class Toy {
@@ -135,14 +144,6 @@ classDiagram
     boolean pinned
   }
 
-  class QrLogin {
-    ObjectId _id
-    string token
-    string status
-    ObjectId user
-    Date createdAt
-  }
-
   class Payout {
     ObjectId _id
     ObjectId developer
@@ -209,8 +210,8 @@ classDiagram
 ### reviews
 `game` (ref Game), `user` (ref User), `stars` (1–5), `title`, `body`, `playMinutesAtReview`, `helpful[]`, `devResponse` (text, respondedAt). Unique index `(game, user)` — mỗi người chỉ đánh giá một lần.
 
-### qrlogins
-`token` (unique), `status` (pending/confirmed), `user`, `createdAt` (TTL 90 giây).
+### genres
+`slug` (unique), `name`, `description`, `sortOrder`, `active`. Genre là collection điều khiển bộ lọc: đổi tên/ẩn/sắp xếp một chỗ, game tham chiếu bằng `ObjectId` thay vì lưu chuỗi.
 
 ### payouts
 `developer` (ref User), `amount`, `status` (`pending`/`paid`/`rejected`), `requestedAt`, `paidAt`, `note`. Khi developer gửi yêu cầu, số dư hiển thị được đưa về 0 để không thể yêu cầu hai lần; admin duyệt `paid` hoặc `rejected` (hoàn lại số dư).
@@ -229,7 +230,7 @@ Số liệu dưới đây lấy từ database demo đang chạy.
 | `orders` | 4 | 1 đơn `paid`, 3 đơn `cancelled` từ luồng thanh toán demo |
 | `gamekeys` | 1 | Key demo đã cấp cho đơn `paid` |
 | `payments` | 4 | 1 giao dịch `success`, 3 giao dịch `pending` |
-| `qrlogins` | 0 | Token QR dùng một lần, tự hết hạn |
+| `genres` | 14 | Thể loại dùng cho bộ lọc cửa hàng |
 | `payouts` | 0 | Yêu cầu rút tiền của developer |
 | `images.files` | 394 | Ảnh trong GridFS |
 | `images.chunks` | 744 | Các chunk nhị phân của ảnh |
@@ -376,7 +377,7 @@ Key chỉ được tạo khi một đơn `paid` được fulfilment; `codeEnc` v
 | payments | `orderId` (unique), `gatewayOrderId` | chống settle hai lần |
 | reviews | `game+user` (unique) | mỗi người 1 review/game |
 | posts | `board` | lọc theo board |
-| qrlogins | `token` (unique), TTL 90s | QR dùng một lần |
+| genres | `slug` (unique), `active+sortOrder`, `name` | lọc và sắp xếp thể loại |
 | payouts | `developer`, `status`, `requestedAt` | lọc yêu cầu theo developer / trạng thái |
 
 ## 1.6 Nguồn dữ liệu
@@ -423,20 +424,6 @@ sequenceDiagram
   API-->>SPA: { user }
   SPA-->>U: đăng nhập thành công
 ```
-
-## 2.2 Đăng nhập bằng QR (web + Android)
-
-**Giao diện:** nút "Scan to log in" trên trang login → hiện QR + trạng thái chờ; app Android quét mã bằng CameraX + ML Kit.
-
-![QR login](screens/09-qr-login.png)
-
-**Luồng xử lý:**
-1. Web gọi `POST /api/qrlogin/request` → server tạo token ngẫu nhiên 24 byte, lưu `qrlogins` với `status: pending`, TTL 90 giây.
-2. Web hiển thị token dưới dạng QR, poll `GET /api/qrlogin/status?token=...` mỗi 2 giây.
-3. App Android (đã đăng nhập) quét QR, gọi `POST /api/qrlogin/confirm` kèm token và session cookie của app.
-4. Server kiểm tra token còn hạn và đang `pending`, gán `user` của app, chuyển `status: confirmed`.
-5. Web poll thấy `confirmed` → gọi `POST /api/qrlogin/activate`; server tạo session web cho đúng user đó, xoá token.
-6. Token hết hạn sau 90 giây nên không thể phát lại.
 
 ## 2.3 Trang chủ
 
@@ -680,13 +667,12 @@ sequenceDiagram
 
 ## 2.19 App Android
 
-**Giao diện:** app Kotlin/Jetpack Compose trong `Mobile/` — bottom nav Store / Community / Library / Account; login/register, store, game detail, cart, checkout (mở VNPay), orders, library, community, recommendations, profile, QR scanner.
+**Giao diện:** app Kotlin/Jetpack Compose trong `Mobile/` — bottom nav Store / Community / Library / Account; login/register, store, game detail, cart, checkout (mở VNPay), orders, library, community, recommendations, profile.
 
 **Luồng xử lý:**
 1. Retrofit gọi cùng `/api/*`; session cookie được lưu bằng `PersistentCookieJar`.
 2. Base URL mặc định `http://10.0.2.2:3000/api/` (emulator) hoặc LAN IP (máy thật).
-3. QR scanner dùng CameraX + ML Kit, gọi `/api/qrlogin/confirm`.
-4. Checkout mở `paymentUrl` bằng Intent sang trình duyệt.
+3. Checkout mở `paymentUrl` bằng Intent sang trình duyệt.
 
 ## 2.20 Hỗ trợ
 

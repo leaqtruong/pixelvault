@@ -1,6 +1,7 @@
 // JSON API for the React SPA. Mirrors the EJS routes' logic, session-authenticated.
 const express = require('express');
 const Game = require('../models/Game');
+const Genre = require('../models/Genre');
 const GameKey = require('../models/GameKey');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -8,7 +9,6 @@ const Toy = require('../models/Toy');
 const Review = require('../models/Review');
 const Post = require('../models/Post');
 const Payment = require('../models/Payment');
-const QrLogin = require('../models/QrLogin');
 const Payout = require('../models/Payout');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
@@ -18,6 +18,7 @@ const gateway = require('../lib/paymentGateway');
 const loginLimiter = require('../lib/loginLimiter');
 const cache = require('../lib/cache');
 const { getBucket } = require('../lib/gridfs');
+const { resolveGenres } = require('../lib/genres');
 
 const router = express.Router();
 
@@ -205,7 +206,13 @@ router.get('/games', async (req, res) => {
   try {
     const { q, genre, tag, platform, feature, sort = 'popular', maxPrice, onSale, page = '1', limit = '24' } = req.query;
     const filter = { status: 'published', productType: { $ne: 'toy' } };
-    if (genre) filter.genres = genre;
+    if (genre) {
+      /* Genres are controlled documents now. Resolve the slug once; an
+         unknown/inactive slug must return an empty page, never the whole
+         catalogue. */
+      const genreDoc = await Genre.findOne({ slug: genre, active: true }).select('_id').lean();
+      filter.genres = genreDoc ? genreDoc._id : new mongoose.Types.ObjectId();
+    }
     if (tag) filter.tags = tag;
     if (platform) filter.platforms = platform;
     if (feature) filter.features = feature;
@@ -252,12 +259,21 @@ router.get('/games', async (req, res) => {
       { $project: { _id: 1 } },
     ]);
     const ids = pageIds.map((r) => r._id);
-    const docs = ids.length ? await Game.find({ _id: { $in: ids } }).populate('developer', 'username').lean() : [];
+    const docs = ids.length ? await Game.find({ _id: { $in: ids } }).populate('developer', 'username').populate('genres', 'slug name').lean() : [];
     const byId = new Map(docs.map((g) => [String(g._id), g]));
     const items = ids.map((id) => byId.get(String(id))).filter(Boolean);
     const scope = { status: 'published', productType: { $ne: 'toy' } };
     const [genres, tags, categories, platforms] = await Promise.all([
-      Game.distinct('genres', scope),
+      Game.aggregate([
+        { $match: scope },
+        { $unwind: '$genres' },
+        { $group: { _id: '$genres', count: { $sum: 1 } } },
+        { $lookup: { from: 'genres', localField: '_id', foreignField: '_id', as: 'genre' } },
+        { $unwind: '$genre' },
+        { $match: { 'genre.active': true } },
+        { $sort: { 'genre.sortOrder': 1, 'genre.name': 1 } },
+        { $project: { _id: 0, slug: '$genre.slug', name: '$genre.name', count: 1 } },
+      ]),
       // Most-used tags first, so the store's tag browser shows the popular
       // ones instead of an alphabetical wall of every tag in the catalogue.
       Game.aggregate([
@@ -276,7 +292,7 @@ router.get('/games', async (req, res) => {
 
 router.get('/games/:slug', async (req, res) => {
   try {
-    const game = await Game.findOne({ slug: req.params.slug }).populate('developer', 'username').lean();
+    const game = await Game.findOne({ slug: req.params.slug }).populate('developer', 'username').populate('genres', 'slug name').lean();
     if (!game) return res.status(404).json({ error: 'Game not found' });
     await Game.updateOne({ _id: game._id }, { $inc: { 'stats.views': 1 } });
     const reviews = await Review.find({ game: game._id }).populate('user', 'username').sort({ createdAt: -1 }).limit(20).lean();
@@ -354,20 +370,13 @@ router.post('/toys/:id/wishlist', needLogin, async (req, res) => {
 router.get('/home', async (req, res) => {
   try {
     const published = { status: 'published', productType: { $ne: 'toy' } };
-    const catNames = ['Action', 'RPG', 'Strategy', 'Indie', 'Adventure', 'Simulation', 'Horror', 'Free to Play'];
-    const [featured, deals, fresh, threads, toys, catRows, titles, toyCount, dealsAgg, keysIssued, orderAgg] = await Promise.all([
-      Game.find({ ...published, featured: true }).limit(5).lean(),
-      Game.find({ ...published, discountPct: { $gt: 0 } }).sort({ discountPct: -1 }).limit(8).lean(),
-      Game.find(published).sort({ releaseDate: -1 }).limit(8).lean(),
+    const [featured, deals, fresh, threads, toys, catGenres, titles, toyCount, dealsAgg, keysIssued, orderAgg] = await Promise.all([
+      Game.find({ ...published, featured: true }).populate('genres', 'slug name').limit(5).lean(),
+      Game.find({ ...published, discountPct: { $gt: 0 } }).populate('genres', 'slug name').sort({ discountPct: -1 }).limit(8).lean(),
+      Game.find(published).populate('genres', 'slug name').sort({ releaseDate: -1 }).limit(8).lean(),
       Post.find().sort({ createdAt: -1 }).limit(5).populate('author', 'username').lean(),
       Toy.find({ status: 'published' }).limit(4).lean(),
-      Game.aggregate([
-        { $match: { ...published, genres: { $in: catNames } } },
-        { $unwind: '$genres' },
-        { $match: { genres: { $in: catNames } } },
-        { $sort: { 'stats.views': -1 } },
-        { $group: { _id: '$genres', img: { $first: '$coverImage' }, slug: { $first: '$slug' } } },
-      ]),
+      Genre.find({ active: true }).sort({ sortOrder: 1, name: 1 }).limit(8).select('slug name').lean(),
       // Ledger figures — all counted from the database, never invented.
       Game.countDocuments(published),
       Toy.countDocuments({ status: 'published' }),
@@ -375,8 +384,12 @@ router.get('/home', async (req, res) => {
       GameKey.countDocuments({ status: 'sold' }),
       Order.countDocuments({ status: { $ne: 'cancelled' } }),
     ]);
-    const byGenre = new Map(catRows.map((r) => [r._id, r]));
-    const catTiles = catNames.map((name) => byGenre.get(name)).filter(Boolean).map((r) => ({ name: r._id, img: r.img, slug: r.slug }));
+    const catTiles = [];
+    for (const genre of catGenres) {
+      const game = await Game.findOne({ ...published, genres: genre._id })
+        .sort({ 'stats.views': -1 }).select('coverImage slug').lean();
+      if (game) catTiles.push({ name: genre.name, slug: genre.slug, img: game.coverImage });
+    }
     const ledger = { titles, toys: toyCount, onSale: dealsAgg, keysIssued, orders: orderAgg };
     res.json({ featured, deals, fresh, threads, toys, catTiles, ledger });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1016,13 +1029,25 @@ router.post('/library/play/:gameId', needLogin, async (req, res) => {
 });
 
 router.get('/recommendations', needLogin, async (req, res) => {
-  const user = await User.findById(req.session.user._id).populate('library.game').lean();
-  const genreCount = {};
-  (user.library || []).forEach((e) => (e.game?.genres || []).forEach((g) => { genreCount[g] = (genreCount[g] || 0) + 1; }));
-  const topGenres = Object.entries(genreCount).sort((a, b) => b[1] - a[1]).slice(0, 3).map((e) => e[0]);
+  const user = await User.findById(req.session.user._id)
+    .populate({ path: 'library.game', populate: { path: 'genres', select: 'slug name' } })
+    .lean();
+  const genreCount = new Map();
+  (user.library || []).forEach((e) => (e.game?.genres || []).forEach((g) => {
+    const id = String(g._id || g);
+    genreCount.set(id, (genreCount.get(id) || 0) + 1);
+  }));
+  const topGenreIds = [...genreCount.entries()]
+    .sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => new mongoose.Types.ObjectId(id));
+  const fallback = topGenreIds.length ? null : await Genre.findOne({ active: true }).sort({ sortOrder: 1, name: 1 }).select('_id').lean();
+  const filter = { status: 'published', productType: { $ne: 'toy' } };
+  if (topGenreIds.length) filter.genres = { $in: topGenreIds };
+  else if (fallback) filter.genres = fallback._id;
   const ownedIds = (user.library || []).map((e) => String(e.game?._id || e.game));
-  let recs = await Game.find({ status: 'published', productType: { $ne: 'toy' }, genres: { $in: topGenres.length ? topGenres : ['Action'] } }).lean();
+  let recs = await Game.find(filter).populate('genres', 'slug name').lean();
   recs = recs.filter((g) => !ownedIds.includes(String(g._id))).slice(0, 8);
+  const topGenres = await Genre.find({ _id: { $in: topGenreIds } }).select('name').lean()
+    .then((rows) => rows.map((g) => g.name));
   res.json({ topGenres, recs });
 });
 
@@ -1062,7 +1087,7 @@ router.post('/reviews/:id/respond', needLogin, async (req, res) => {
 
 // ---------- users ----------
 router.get('/users/:username', async (req, res) => {
-  const user = await User.findOne({ username: req.params.username }).populate('library.game', 'title coverImage slug genres').populate('wishlist', 'title coverImage slug price discountPct').lean();
+  const user = await User.findOne({ username: req.params.username }).populate({ path: 'library.game', select: 'title coverImage slug genres', populate: { path: 'genres', select: 'slug name' } }).populate('wishlist', 'title coverImage slug price discountPct').lean();
   if (!user) return res.status(404).json({ error: 'User not found' });
   const orders = await Order.find({ user: user._id }).sort({ createdAt: -1 }).limit(10).lean();
   const isSelf = req.session.user && String(req.session.user._id) === String(user._id);
@@ -1137,7 +1162,7 @@ router.get('/dev/status', needLogin, async (req, res) => {
 });
 
 router.get('/dev', needDev, async (req, res) => {
-  const games = await Game.find({ developer: req.session.user._id }).lean();
+  const games = await Game.find({ developer: req.session.user._id }).populate('genres', 'slug name').lean();
   const gameIds = games.map((g) => g._id);
   const gameIdSet = new Set(gameIds.map(String));
   const orders = await Order.find({ 'devPayouts.game': { $in: gameIds } }).lean();
@@ -1168,7 +1193,7 @@ router.post('/dev/new', needDev, async (req, res) => {
     const game = await Game.create({
       title: b.title, tagline: b.tagline, description: b.description, developer: req.session.user._id,
       studioName: b.studioName || req.session.user.username,
-      genres: Array.isArray(b.genres) ? b.genres : String(b.genres || 'Indie').split(',').map((s) => s.trim()).filter(Boolean),
+      genres: await resolveGenres(b.genres, 'Indie'),
       tags: Array.isArray(b.tags) ? b.tags : String(b.tags || '').split(',').map((s) => s.trim()).filter(Boolean),
       platforms: b.platforms?.length ? b.platforms : ['Windows'],
       features: Array.isArray(b.features) ? b.features : String(b.features || '').split(',').map((s) => s.trim()).filter(Boolean),
@@ -1205,7 +1230,7 @@ router.post('/dev/:id/edit', needDev, async (req, res) => {
   if (req.body.tagline !== undefined) patch.tagline = String(req.body.tagline).slice(0, 200);
   if (req.body.description !== undefined) patch.description = String(req.body.description).slice(0, 5000);
   if (req.body.coverImage !== undefined) patch.coverImage = String(req.body.coverImage);
-  if (req.body.genres !== undefined) patch.genres = splitList(req.body.genres, 'Indie');
+  if (req.body.genres !== undefined) patch.genres = await resolveGenres(req.body.genres, 'Indie');
   if (req.body.tags !== undefined) patch.tags = splitList(req.body.tags);
   if (req.body.price !== undefined) patch.price = Math.max(0, Number(req.body.price) || 0);
   if (req.body.discountPct !== undefined) patch.discountPct = Math.min(90, Math.max(0, Number(req.body.discountPct) || 0));
@@ -1322,7 +1347,7 @@ router.get('/admin', needAdmin, async (req, res) => {
     Post.find({}).populate('author', 'username').sort({ createdAt: -1 }).limit(60).lean(),
     Review.find({}).populate('user', 'username').populate('game', 'title slug').sort({ createdAt: -1 }).limit(60).lean(),
     User.find({}).select('username email role createdAt isBanned').sort({ createdAt: -1 }).limit(200).lean(),
-    Game.find({}).populate('developer', 'username').select('title slug price discountPct status stats developer featured coverImage genres tags description createdAt').sort({ createdAt: -1 }).limit(300).lean(),
+    Game.find({}).populate('developer', 'username').populate('genres', 'slug name').select('title slug price discountPct status stats developer featured coverImage genres tags description createdAt').sort({ createdAt: -1 }).limit(300).lean(),
     Toy.find({}).select('title slug price stock stats status seller category brand coverImage').sort({ title: 1 }).limit(300).lean(),
     Payment.find({}).populate('user', 'username').select('orderId gatewayOrderId user order amount currency provider live status responseCode createdAt settledAt').sort({ createdAt: -1 }).limit(100).lean(),
     User.find({ role: 'user', 'devProfile.studioName': { $exists: true, $ne: '' }, 'devProfile.verified': { $ne: true } })
@@ -1355,7 +1380,7 @@ router.get('/admin', needAdmin, async (req, res) => {
 router.get('/admin/users/:id', needAdmin, async (req, res) => {
   if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
   const user = await User.findById(req.params.id)
-    .select('username email role isBanned createdAt library wishlist toyWishlist')
+    .select('username displayName email phone bio role isBanned createdAt library wishlist toyWishlist')
     .populate('library.game', 'title slug coverImage price')
     .populate('wishlist', 'title slug coverImage')
     .populate('toyWishlist', 'title slug coverImage')
@@ -1388,6 +1413,32 @@ router.post('/admin/users/:id/role', needAdmin, async (req, res) => {
   await u.save();
   if (String(u._id) === String(req.session.user._id)) req.session.user.role = role;
   res.json({ ok: true, role: u.role });
+});
+
+/* Edit the account fields an owner can safely change. Role, ban and password
+ * have their own endpoints because they carry guards. */
+router.post('/admin/users/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'User not found' });
+  const u = await User.findById(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  const patch = {};
+  if (req.body.username !== undefined) patch.username = String(req.body.username).trim().slice(0, 24);
+  if (req.body.email !== undefined) patch.email = String(req.body.email).toLowerCase().trim();
+  if (req.body.displayName !== undefined) patch.displayName = String(req.body.displayName).slice(0, 40);
+  if (req.body.phone !== undefined) patch.phone = String(req.body.phone).slice(0, 20);
+  if (req.body.bio !== undefined) patch.bio = String(req.body.bio).slice(0, 500);
+  if (!patch.username && req.body.username !== undefined) return res.status(400).json({ error: 'Username cannot be empty.' });
+  if (!patch.email && req.body.email !== undefined) return res.status(400).json({ error: 'Email cannot be empty.' });
+  if (patch.username && patch.username !== u.username) {
+    const dup = await User.findOne({ username: patch.username, _id: { $ne: u._id } }).select('_id').lean();
+    if (dup) return res.status(409).json({ error: 'That username is already taken.' });
+  }
+  if (patch.email && patch.email !== u.email) {
+    const dup = await User.findOne({ email: patch.email, _id: { $ne: u._id } }).select('_id').lean();
+    if (dup) return res.status(409).json({ error: 'That email is already used.' });
+  }
+  await User.updateOne({ _id: u._id }, { $set: patch });
+  res.json({ ok: true });
 });
 
 router.post('/admin/games/:id/status', needAdmin, async (req, res) => {
@@ -1527,6 +1578,60 @@ function splitList(v, fallback = '') {
   return out;
 }
 
+/* Genres are a controlled vocabulary: rename, hide, reorder or merge without
+ * touching every game. Deleting is refused while games still reference it. */
+router.get('/admin/genres', needAdmin, async (req, res) => {
+  const [genres, counts] = await Promise.all([
+    Genre.find({}).sort({ sortOrder: 1, name: 1 }).lean(),
+    Game.aggregate([{ $unwind: '$genres' }, { $group: { _id: '$genres', count: { $sum: 1 } } }]),
+  ]);
+  const byId = new Map(counts.map((r) => [String(r._id), r.count]));
+  res.json({ genres: genres.map((g) => ({ ...g, count: byId.get(String(g._id)) || 0 })) });
+});
+
+router.post('/admin/genres', needAdmin, async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Name is required.' });
+    const slug = Genre.slugify(req.body.slug || name);
+    if (await Genre.findOne({ slug })) return res.status(409).json({ error: 'That slug is already used.' });
+    const genre = await Genre.create({
+      name, slug,
+      description: String(req.body.description || ''),
+      sortOrder: Number(req.body.sortOrder) || 0,
+      active: req.body.active !== false,
+    });
+    res.json({ ok: true, genre });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post('/admin/genres/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Genre not found' });
+  const genre = await Genre.findById(req.params.id);
+  if (!genre) return res.status(404).json({ error: 'Genre not found' });
+  if (req.body.name !== undefined && String(req.body.name).trim()) genre.name = String(req.body.name).trim();
+  if (req.body.slug !== undefined && String(req.body.slug).trim()) genre.slug = Genre.slugify(req.body.slug);
+  if (req.body.description !== undefined) genre.description = String(req.body.description).slice(0, 500);
+  if (req.body.sortOrder !== undefined) genre.sortOrder = Number(req.body.sortOrder) || 0;
+  if (req.body.active !== undefined) genre.active = !!req.body.active;
+  try {
+    await genre.save();
+    res.json({ ok: true, genre });
+  } catch (e) {
+    if (e.code === 11000) return res.status(409).json({ error: 'That slug is already used.' });
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete('/admin/genres/:id', needAdmin, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(404).json({ error: 'Genre not found' });
+  const used = await Game.countDocuments({ genres: req.params.id });
+  if (used) return res.status(400).json({ error: `Genre is still used by ${used} game(s). Hide it instead.` });
+  const genre = await Genre.findByIdAndDelete(req.params.id);
+  if (!genre) return res.status(404).json({ error: 'Genre not found' });
+  res.json({ ok: true });
+});
+
 router.post('/admin/games', needAdmin, async (req, res) => {
   try {
     const b = req.body;
@@ -1537,7 +1642,7 @@ router.post('/admin/games', needAdmin, async (req, res) => {
       description: String(b.description || '').slice(0, 5000),
       developer: req.session.user._id,
       studioName: b.studioName || 'PixelVault',
-      genres: splitList(b.genres, 'Indie'),
+      genres: await resolveGenres(b.genres, 'Indie'),
       tags: splitList(b.tags),
       platforms: ['Windows'],
       coverImage: String(b.coverImage || ''),
@@ -1562,7 +1667,7 @@ router.post('/admin/games/:id', needAdmin, async (req, res) => {
   if (b.price !== undefined) g.price = Math.max(0, Number(b.price) || 0);
   if (b.discountPct !== undefined) g.discountPct = Math.min(90, Math.max(0, Number(b.discountPct) || 0));
   if (b.coverImage !== undefined) g.coverImage = String(b.coverImage);
-  if (b.genres !== undefined) g.genres = splitList(b.genres, 'Indie');
+  if (b.genres !== undefined) g.genres = await resolveGenres(b.genres, 'Indie');
   if (b.tags !== undefined) g.tags = splitList(b.tags);
   if (b.status !== undefined && ['published', 'draft', 'delisted'].includes(b.status)) g.status = b.status;
   if (b.featured !== undefined) g.featured = !!b.featured;
@@ -1767,67 +1872,6 @@ router.stack.forEach((layer) => {
       } catch (e) { next(e); }
     };
   });
-});
-
-// ---------- QR login ----------
-// Web side creates a token and shows it as a QR code; phone side confirms it.
-router.post('/qrlogin/request', async (req, res) => {
-  try {
-    const token = crypto.randomBytes(24).toString('base64url');
-    /* The QR only carries the token. The browser that asked for it keeps a
-       second secret in its signed cookie; activation must present both, so a
-       leaked token alone cannot sign another browser in. */
-    const browserSecret = crypto.randomBytes(24).toString('base64url');
-    await QrLogin.create({ token, browserSecret });
-    req.session.qrSecret = browserSecret;
-    res.json({ token, expiresIn: 90 });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-router.get('/qrlogin/status', async (req, res) => {
-  try {
-    const { token } = req.query;
-    if (!token) return res.status(400).json({ error: 'Missing token.' });
-    const qr = await QrLogin.findOne({ token }).lean();
-    if (!qr) return res.json({ status: 'expired' });
-    res.json({ status: qr.status });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-/* The phone is already signed in (its session cookie rides along). It scanned
-   the code, so it can prove possession of the token and attach its user. */
-router.post('/qrlogin/confirm', needLogin, async (req, res) => {
-  try {
-    const { token } = req.body || {};
-    if (!token) return res.status(400).json({ error: 'Missing token.' });
-    const qr = await QrLogin.findOne({ token });
-    if (!qr) return res.status(404).json({ error: 'QR code expired or invalid.' });
-    if (qr.status !== 'pending') return res.status(409).json({ error: 'QR code already used.' });
-    qr.status = 'confirmed';
-    qr.user = req.session.user._id;
-    await qr.save();
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-/* The web page, still polling on its own session cookie, consumes the
-   confirmed token and signs itself in. */
-router.post('/qrlogin/activate', async (req, res) => {
-  try {
-    const { token } = req.body || {};
-    if (!token) return res.status(400).json({ error: 'Missing token.' });
-    if (!req.session.qrSecret) return res.status(403).json({ error: 'Start the QR login from this browser.' });
-    const qr = await QrLogin.findOne({ token });
-    if (!qr) return res.status(404).json({ error: 'QR code expired or invalid.' });
-    if (qr.status !== 'confirmed') return res.status(409).json({ error: 'Not confirmed yet.' });
-    if (qr.browserSecret !== req.session.qrSecret) return res.status(403).json({ error: 'This QR code belongs to another browser.' });
-    delete req.session.qrSecret;
-    req.session.user = { _id: qr.user, username: '', role: 'user', email: '', avatar: '' };
-    await QrLogin.deleteOne({ _id: qr._id });
-    const user = await User.findById(qr.user).select('username role email avatar').lean();
-    req.session.user = { _id: user._id, username: user.username, role: user.role, email: user.email, avatar: user.avatar || '' };
-    res.json({ ok: true, user: me(req) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ---------- media (GridFS) ----------

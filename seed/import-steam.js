@@ -10,6 +10,7 @@ const Game = require('../models/Game');
 const GameKey = require('../models/GameKey');
 const Post = require('../models/Post');
 const { encryptKey, hashKey, makeDemoKey } = require('../lib/keyCrypto');
+const { resolveGenres } = require('../lib/genres');
 const { resolveArt } = require('./steamArt');
 
 const MONGO = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/pixelvault';
@@ -115,6 +116,7 @@ async function main() {
       const d = await fetchDetail(appid);
       const art = await resolveArt(appid, d.header_image);
       const doc = mapGame(appid, d, i, art);
+      doc.genres = await resolveGenres(doc.genres, 'Indie');
       const g = await Game.create({ ...doc, developer: dev._id });
       games.push(g);
       console.log(`[import] ok ${appid} ${doc.title}`);

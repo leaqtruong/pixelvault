@@ -7,7 +7,7 @@ const gameSchema = new mongoose.Schema({
   description: { type: String, default: '' },
   developer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   studioName: { type: String, default: 'Indie' },
-  genres: [{ type: String, index: true }],
+  genres: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Genre', index: true }],
   tags: [String],
   platforms: [{ type: String, enum: ['Windows', 'Mac', 'Linux', 'Steam Deck', 'VR'], default: 'Windows' }],
   features: [String],

@@ -23,7 +23,6 @@ sealed class Route {
     data object Account : Route()
     data object Login : Route()
     data object Register : Route()
-    data object QrScan : Route()
     data object Toys : Route()
     data class Toy(val slug: String) : Route()
     data object Community : Route()
@@ -79,7 +78,6 @@ fun App() {
                     user = user,
                     onLogin = { push(Route.Login) },
                     onRegister = { push(Route.Register) },
-                    onQr = { push(Route.QrScan) },
                     onOrders = { push(Route.Orders) },
                     onRecommendations = { push(Route.Recommendations) },
                     onProfile = { user?.let { push(Route.Profile(it.username)) } },
@@ -101,7 +99,6 @@ fun App() {
                     onRegister = { push(Route.Register) }
                 )
                 is Route.Register -> RegisterScreen(onRegistered = { user = it; pop() })
-                is Route.QrScan -> QrScanScreen(onBack = { pop() })
             }
         }
     }
@@ -112,7 +109,6 @@ fun AccountScreen(
     user: User?,
     onLogin: () -> Unit,
     onRegister: () -> Unit,
-    onQr: () -> Unit,
     onOrders: () -> Unit,
     onRecommendations: () -> Unit,
     onProfile: () -> Unit,
@@ -128,10 +124,8 @@ fun AccountScreen(
             Button(onClick = onProfile) { Text("My profile") }
             OutlinedButton(onClick = onOrders) { Text("Order history") }
             OutlinedButton(onClick = onRecommendations) { Text("Recommendations") }
-            Button(onClick = onQr) { Text("Scan web QR to sign in") }
             OutlinedButton(onClick = onLogout) { Text("Log out") }
         }
-        Text("QR login lets you sign into the website by scanning the code on its login page with this phone.")
     }
 }
 
